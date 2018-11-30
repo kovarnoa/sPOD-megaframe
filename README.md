@@ -1,4 +1,4 @@
-# SPOD - The shifted  proper orthogonal decomposition
+# sPOD - The shifted  proper orthogonal decomposition
 This is a python tool for decomposing and model reduction for multiple transport phenomena.
 It is written in python3.
 
