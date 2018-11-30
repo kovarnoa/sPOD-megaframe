@@ -10,3 +10,9 @@ Clone the repository and use it in your python code
 or use instead
     
     from sPOD_tools import sPOD
+    
+## How to use this tool ?
+For simple examples you can check out:
+    
+  * the python scripts in the `example/` folder
+  * the jupyter-notebooks in the `notebooks/` folder
