@@ -5,15 +5,14 @@ Created on Thu Nov 29 09:19:19 2018
 
 @author: Philipp Krah, Jiahan Wang
 
-This package inherits all the infrastructure for the 
+This package provides all the infrastructure for the 
     
-    shifte propper orthogonal decomposition (SPOD)
-
+    shifted propper orthogonal decomposition (SPOD)
 
 """
-
-
-import sys
+############################
+# import MODULES here:
+############################
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy import exp, meshgrid, mod,size, interp, where, diag, reshape, \
@@ -22,14 +21,14 @@ from numpy.linalg import svd, lstsq, norm
 from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
                                 xlabel, ylabel, figure \
 
-###############################################################################
-# SPOD SETTINGS:
-#################
+###############################
+# sPOD general SETTINGS:
+###############################
 # latex font for plots
 plt.rc('text', usetex=True)
-plt.rc('font', family='serif')                       
-###############################################################################
-                                
+plt.rc('font', family='serif')
+##############################
+
 # %%
 ###############################################################################
 # CLASS of CO MOVING FRAMES
@@ -40,12 +39,13 @@ class frame:
         the rest frame by a galilei transform.
         The frame is represented by an orthogonal system.
     """
-   
+
     def __init__(self, velocity, dx, dt, fields, number_of_modes=1):
         """
         Initialize a co moving frame.
         """
-        # in future versions the velocity will be replaced by the transformation mapping
+        # TODO in future versions the velocity
+        # will be replaced by the transformation mapping
         self.velocity = velocity # its actually the relative velocity to the labframe
         self.Nmodes = number_of_modes
         self.set_orhonormal_system(dx,dt,fields)
@@ -79,8 +79,8 @@ class frame:
         Reduce the full filed using the first N modes of the Singular
         Value Decomposition
         """
-        Nmodes=self.Nmodes
-        [U, S, V] = svd(field,full_matrices=True)
+        Nmodes = self.Nmodes
+        [U, S, V] = svd(field, full_matrices=True)
         Sr = S[:Nmodes]
         Ur = U[:, :Nmodes]
         Vr = V[:Nmodes, :]
@@ -88,26 +88,30 @@ class frame:
         return Ur, Sr, Vr
         
     def set_orhonormal_system(self, dx, dt, fields):
+        """
+         
+        """
+        
         # spatial lattice spacing
         self.dx = dx
         # timestep
-        self.dt = dt        
+        self.dt = dt
         # field shape
-        self.field_shape=np.shape(fields)
+        self.field_shape = np.shape(fields)
         # number of data fields
-        self.Nfields = size(fields,0)
-        # number of space dimensions 
-        self.dim = fields[0].ndim - 1 
+        self.Nfields = size(fields, 0)
+        # number of space dimensions
+        self.dim = fields[0].ndim - 1
         # list of spatial points in each dimension
         self.Nspace = np.ones(2)
         self.Nspace[:self.dim] = fields[0].shape[:self.dim]
         # number of timesteps
         self.Ntime = fields[0].shape[-1]
-                         
+
         # init field
         X = []
-        
-        # loop 
+
+        # loop
         for idx_field,field in enumerate(fields):
             field_shift = self.shift(field)
             field_shift = reshape(field_shift, [-1, self.Ntime])
@@ -133,7 +137,7 @@ class frame:
         This function plots the singular values of the frame.
         """
         sigmas=self.modal_system["sigma"]        
-        semilogy(S,"r+")
+        semilogy(sigmas,"r+")
         xlabel("i")
         ylabel("$\sigma_i$")
         
@@ -166,18 +170,18 @@ class frame:
 # least square minimization
 ###############################################################################
 
-def minimice(Xhat_frames,X):
+def minimize(Xtilde_frames,X):
   ######################################################
     # build coef matrix X_coef_mat of eq. (9) in Reiss2017
     ######################################################
     X_coef=[]       # lab frame
     X_coef_shift=[] # co-moving frame
-    dx=Xhat_frames[0].dx
-    dt=Xhat_frames[0].dt
+    dx=Xtilde_frames[0].dx
+    dt=Xtilde_frames[0].dt
     # number of moving frames
-    Nframes = len(Xhat_frames)
+    Nframes = len(Xtilde_frames)
     # loop through all moving frames
-    for k,frame in enumerate(Xhat_frames):
+    for k,frame in enumerate(Xtilde_frames):
         # left singular vectors
         U=frame.modal_system["U"]
         # right singular vectors 
@@ -202,12 +206,12 @@ def minimice(Xhat_frames,X):
     X_coef = asarray(X_coef).T
     X_coef_shift = asarray(X_coef_shift)       
     X_ref = reshape(X.copy(), [-1, 1])
-    # X_coef * alpha = x_ref
+    # X_coef * alpha = X
     alpha = lstsq(X_coef, X_ref)[0]
     alpha = asarray(alpha)
     
 
-    for k,frame in enumerate(Xhat_frames):
+    for k,frame in enumerate(Xtilde_frames):
         X_frame = X_coef_shift.T[:,k*Nmodes:(k+1)*Nmodes] @ alpha[k*Nmodes:(k+1)*Nmodes] 
         X_frame = reshape(X_frame, np.shape(X[0]))
         [U, S, VT]=frame.reduce( X_frame )
@@ -233,11 +237,11 @@ def sPOD(X, velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
         clims = p.get_clim()
         
     #################################
-    # reset loop variables
+    # 1. reset loop variables
     ################################
     
     Xtilde=np.zeros(np.shape(X))
-    Xhat_frames=[frame(v,dx,dt,Xtilde,nmodes) for v in velocities]
+    Xtilde_frames=[frame(v,dx,dt,Xtilde,nmodes) for v in velocities]
     rel_err=1
     it=0
     
@@ -252,7 +256,7 @@ def sPOD(X, velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
 
         
         ###############################
-        # 1. calculate residual R
+        # 2. calculate residual R
         ###############################
         R = X - Xtilde
         rel_err = norm(R)/norm(X) # relative error
@@ -262,44 +266,44 @@ def sPOD(X, velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
         ##########################################
         
         if visualize: # plot the residual
-            subplot(1,len(Xhat_frames)+2,2)
+            subplot(1,len(Xtilde_frames)+2,2)
             pcolor(R[0])   
             plt.title(r"$R=X-\tilde{X}$")    
             #plt.xlabel(r"$N_x$")
             plt.pause(0.05)
 
         ###############################
-        # 2. Multi shift and reduce R
+        # 3. Multi shift and reduce R
         ###############################
         R_frames=[frame(v, dx, dt, R, nmodes) for v in velocities]
     
         #######################################################################
-        # 3. combine the modes of Xtilde and R
+        # 4. combine the modes of Xtilde and R
         # Note 2 objects in the same frame, can be added by concatenating 
         # the SVD left and right singular vectors.
         #######################################################################
-        #Xhat_frames = []
+        #Xtilde_frames = []
         for k, R_frame in enumerate(R_frames):
-            Xhat_frames[k]=R_frame + Xhat_frames[k]
+            Xtilde_frames[k]=R_frame + Xtilde_frames[k]
         ###################################################
-        # 4. Solve (Xtilde+R) * alpha = X for unknown alpha
+        # 5. Solve (Xtilde+R) * alpha = X for unknown alpha
         #  + the classical method (Reiss2018) uses the 
         #    least square approach
         # TODO Implement the other methods as well
         ###################################################
-        minimice(Xhat_frames, X)
+        minimize(Xtilde_frames, X)
         
         #############################################
         # 5. Add up all the frames to compute Xtilde
         #############################################
         Xtilde *= 0
-        for k, Xframe in enumerate(Xhat_frames):
+        for k, Xframe in enumerate(Xtilde_frames):
 
             Xtilde+=Xframe.shift(Xframe.build_field()[0])
             
             # we plot the first 3 frames 
             if visualize and k <= 3:
-                subplot(1,len(Xhat_frames)+2,k+3)
+                subplot(1,len(Xtilde_frames)+2,k+3)
                 Xframe.plot_field()
                 plt.clim(clims)
                 plt.title(r"$q^"+str(k)+"(x,t)$")        

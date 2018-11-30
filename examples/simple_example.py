@@ -3,13 +3,14 @@
 """
 Created on Fri Nov 30 09:11:12 2018
 
-@author: philipp
+@author: philipp krah, jiahan wang
 """
 
 ###############################################################################
 # IMPORTED MODULES
 ###############################################################################
 import numpy as np
+from numpy import exp
 import matplotlib.pyplot as plt
 from sPOD_tools import frame,sPOD
 ###############################################################################
@@ -30,8 +31,8 @@ dx=x[1]-x[0]
 dt=t[1]-t[0]
 c=dx/dt
 [X,T] =meshgrid(x,t)
-fun = lambda x,t: exp( -(mod((x-c*t),L)-x0)**2/sigma**2 ) + \
-                  exp( -(mod((x+c*t),L)-x0)**2/sigma**2 )
+fun = lambda x,t: exp( -(mod((x-c*t),L)-x0)**2/sigma**2 *0.5 ) + \
+                  exp( -(mod((x+c*t),L)-x0)**2/sigma**2 *0.5)
 
 field = [fun(X, T)]
 
@@ -40,4 +41,7 @@ plotten=True
 eps=1e-4
 rel_err=1
 
-sPOD(field, [-c,c], dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True)
+sPOD(field, [-c,c], dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=False)
+
+#f_frame=frame(c, dx, dt, field, nmodes)
+    
