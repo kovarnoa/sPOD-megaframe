@@ -16,3 +16,5 @@ For simple examples you can check out:
     
   * the python scripts in the `example/` folder
   * the jupyter-notebooks in the `notebooks/` folder
+
+**BE AWARE THAT THIS CODE IS STILL UNDER DEVELOPMENT. FUTURE DEVS WILL INCREASE PERFORMANCE AND USABILITY**
