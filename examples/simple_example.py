@@ -21,26 +21,29 @@ from sPOD_tools import frame, sPOD
 #%% Define your DATA:
 ##########################################
 plt.close("all")
-Nx = 200 # number of grid points in x 
-Nt = 250 # numer of time intervalls
-dt = 0.01 # size of time intervall
-T = Nt*dt # total time
+Nx = 200  # number of grid points in x
+Nt = 250  # numer of time intervalls
+dt = 0.01  # size of time intervall
+T = Nt*dt  # total time
 L = 2*np.pi  # total domain size
-x0 = L*0.5 # starting point of the gauss puls
-sigma = L/50 # standard deviation of the puls
+x0 = L*0.5  # starting point of the gauss puls
+sigma = L/50  # standard deviation of the puls
 
-nmodes = 1 # reduction of singular values
-x = np.linspace(0,L,Nx)
-t = np.linspace(0,T,Nt)
-dx=x[1]-x[0]
-dt=t[1]-t[0]
-c=dx/dt
-[T,X] =meshgrid(t,x)
-fun = lambda x,t: 0.5 * exp( -(mod((x-c*t),L)-x0)**2/sigma**2 ) + \
-                  0.5 * exp( -(mod((x+c*t),L)-x0)**2/sigma**2 )
+nmodes = 1  # reduction of singular values
+x = np.linspace(0, L, Nx)
+t = np.linspace(0, T, Nt)
+dx = x[1]-x[0]
+dt = t[1]-t[0]
+c = dx/dt
+[T, X] = meshgrid(t, x)
+
+
+def fun(x, t): 0.5 * exp(-(mod((x-c*t), L)-x0)**2/sigma**2) + \
+    0.5 * exp(-(mod((x+c*t), L)-x0)**2/sigma**2)
+
 
 # Define your field as a list of fields:
-# For example the first element in the list can be the density of 
+# For example the first element in the list can be the density of
 # a flow quantity and the second element could be the velocity in 1D
 density = fun(X, T)
 velocity = fun(X, T)
