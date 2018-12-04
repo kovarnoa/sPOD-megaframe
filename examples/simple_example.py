@@ -10,7 +10,7 @@ Created on Fri Nov 30 09:11:12 2018
 # IMPORTED MODULES
 ###############################################################################
 import sys
-sys.path.append('../lib/')
+sys.path.append('../lib')
 import numpy as np
 from numpy import exp, mod, meshgrid
 import matplotlib.pyplot as plt
@@ -27,9 +27,9 @@ dt = 0.01 # size of time intervall
 T = Nt*dt # total time
 L = 2*np.pi  # total domain size
 x0 = L*0.5 # starting point of the gauss puls
-sigma=L/50 # standard diviation of the puls
+sigma = L/50 # standard deviation of the puls
 
-nmodes = 2 # reduction of singular values
+nmodes = 1 # reduction of singular values
 x = np.linspace(0,L,Nx)
 t = np.linspace(0,T,Nt)
 dx=x[1]-x[0]
