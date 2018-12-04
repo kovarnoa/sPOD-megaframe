@@ -29,7 +29,7 @@ L = 2*np.pi  # total domain size
 x0 = L*0.5 # starting point of the gauss puls
 sigma=L/50 # standard diviation of the puls
 
-nmodes = 1 # reduction of singular values
+nmodes = 2 # reduction of singular values
 x = np.linspace(0,L,Nx)
 t = np.linspace(0,T,Nt)
 dx=x[1]-x[0]
@@ -50,7 +50,7 @@ fields = [density]#, velocity]
 #######################################
 #%% CALL THE SPOD algorithm
 ######################################
-sPOD_frames = sPOD(fields, [-c,c], dx, dt, nmodes=1, eps=1e-4, Niter=30, visualize=False)
+sPOD_frames = sPOD(fields, [-c,c], dx, dt, nmodes=1, eps=1e-4, Niter=30, visualize=True)
 
 #####################################
 #%% visualize your results:
