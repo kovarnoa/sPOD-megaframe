@@ -9,6 +9,8 @@ Created on Fri Nov 30 09:11:12 2018
 ###############################################################################
 # IMPORTED MODULES
 ###############################################################################
+import sys
+sys.path.append('../lib/')
 import numpy as np
 from numpy import exp, mod,meshgrid
 import matplotlib.pyplot as plt
@@ -59,9 +61,9 @@ sPOD_frames, rel_err = sPOD(fields, [-c, c], dx, dt, \
 # If you want to plot the k-th frame use: 
 # 1. frame
 k_frame = 0
-plt.suptitle("sPOD Frames")
 plt.subplot(121)
 sPOD_frames[k_frame].plot_field()
+plt.suptitle("sPOD Frames")
 plt.xlabel(r'$N_x$')
 plt.ylabel(r'$N_t$')
 plt.title(r"$q^"+str(k_frame)+"(x,t)$")
