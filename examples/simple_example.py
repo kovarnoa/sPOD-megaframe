@@ -37,10 +37,8 @@ dt = t[1]-t[0]
 c = dx/dt
 [T, X] = meshgrid(t, x)
 
-
-def fun(x, t): 0.5 * exp(-(mod((x-c*t), L)-x0)**2/sigma**2) + \
+fun = lambda x, t: 0.5 * exp(-(mod((x-c*t), L)-x0)**2/sigma**2) + \
     0.5 * exp(-(mod((x+c*t), L)-x0)**2/sigma**2)
-
 
 # Define your field as a list of fields:
 # For example the first element in the list can be the density of
@@ -53,7 +51,7 @@ fields = [density]#, velocity]
 #######################################
 #%% CALL THE SPOD algorithm
 ######################################
-sPOD_frames = sPOD(fields, [-c,c], dx, dt, nmodes=1, eps=1e-4, Niter=30, visualize=True)
+sPOD_frames = sPOD(fields, [-c, c], dx, dt, nmodes=1, eps=1e-4, Niter=30, visualize=False)
 
 #####################################
 #%% visualize your results:
