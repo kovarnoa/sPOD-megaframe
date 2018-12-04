@@ -9,10 +9,12 @@ Created on Fri Nov 30 09:11:12 2018
 ###############################################################################
 # IMPORTED MODULES
 ###############################################################################
+import sys
+sys.path.append('../lib/')
 import numpy as np
-from numpy import exp, mod
+from numpy import exp, mod, meshgrid
 import matplotlib.pyplot as plt
-from sPOD_tools import frame,sPOD
+from sPOD_tools import frame, sPOD
 ###############################################################################
 
 ##########################################
@@ -58,9 +60,9 @@ sPOD_frames = sPOD(fields, [-c,c], dx, dt, nmodes=1, eps=1e-4, Niter=30, visuali
 # If you want to plot the k-th frame use: 
 ## 1. frame
 k_frame = 0
-plt.suptitle("sPOD Frames")
 plt.subplot(121)
 sPOD_frames[k_frame].plot_field()
+plt.suptitle("sPOD Frames")
 plt.xlabel(r'$N_x$')
 plt.ylabel(r'$N_t$')
 plt.title(r"$q^"+str(k_frame)+"(x,t)$")

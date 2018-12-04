@@ -24,9 +24,7 @@ from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
 ###############################
 # sPOD general SETTINGS:
 ###############################
-# latex font for plots
-plt.rc('text', usetex=True)
-plt.rc('font', family='serif')
+
 ##############################
 
 # %%
