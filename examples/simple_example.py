@@ -51,7 +51,9 @@ fields = [density]#, velocity]
 #######################################
 #%% CALL THE SPOD algorithm
 ######################################
-sPOD_frames = sPOD(fields, [-c, c], dx, dt, nmodes=1, eps=1e-4, Niter=30, visualize=False)
+n_velocities = 2  # number of velocities to be detected
+sPOD_frames = sPOD(fields, n_velocities, dx, dt, nmodes,
+                   eps=1e-4, Niter=30, visualize=False)
 
 #####################################
 #%% visualize your results:

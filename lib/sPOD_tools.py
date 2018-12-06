@@ -32,6 +32,7 @@ from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
 # CLASS of CO MOVING FRAMES
 ###############################################################################                                
 class frame:
+    # TODO: Add properties of class frame in the description
     """ Definition is physics motivated: 
         All points are in a inertial system (frame), if they can be transformed to 
         the rest frame by a galilei transform.
@@ -124,7 +125,7 @@ class frame:
         # number of space dimensions
         self.dim = fields[0].ndim - 1
         # list of spatial points in each dimension
-        self.Nspace = np.ones(2,dtype=int)
+        self.Nspace = np.ones(2, dtype=int)
         self.Nspace[:self.dim] = fields[0].shape[:self.dim]
         # number of timesteps
         self.Ntime = fields[0].shape[-1]
@@ -213,6 +214,40 @@ class frame:
 
 # %%
 ###############################################################################
+# Determination of shift velocities
+###############################################################################
+
+def shift_velocities(dx, dt, fields, n_velocities, v_min, v_max, v_step, n_modes):
+    sigmas = np.zeros([int((v_max-v_min)/v_step), n_modes])
+    v_shifts = np.linspace(v_min, v_max, int((v_max-v_min)/v_step))
+
+    i = 0
+    for v in v_shifts:
+        example_frame = frame(v, dx, dt, fields, n_modes)
+        sigmas[i, :] = example_frame.modal_system["sigma"]
+        i += 1
+
+    # Plot singular value spectrum
+    plt.plot(v_shifts, sigmas, 'o')
+
+    sigmas_temp = sigmas.copy()
+    c_shifts = []
+
+    for i in range(n_velocities):
+        max_index = np.where(sigmas_temp == sigmas_temp.max())
+        max_index_x = max_index[0]
+        max_index_x = max_index_x[0]
+        max_index_y = max_index[1]
+        max_index_y = max_index_y[0]
+
+        sigmas_temp[max_index_x, max_index_y] = 0
+
+        c_shifts.append(v_shifts[max_index_x])
+
+    return c_shifts
+
+
+###############################################################################
 # least square minimization
 ###############################################################################
 
@@ -239,7 +274,7 @@ def minimize(Xtilde_frames, X):
             X_coef_shift.append(reshape(Xmode_shift, [-1]))
             X_coef.append(reshape(Xmode, [-1]))
     ######################################################
-    # solve the minimication problem
+    # solve the minimization problem
     ######################################################
     # first we convert the list of vectors (reshaped matrices) to an array.
     # We have to transpose it since  the function asarray
@@ -283,7 +318,11 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
 ###############################################################################
 
 
-def sPOD(X, velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
+def sPOD(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
+
+    # Determine shift velocities
+    velocities = shift_velocities(dx, dt, X, n_velocities,
+                                  v_min=-5, v_max=5, v_step=0.001, n_modes=1)
 
     # plot the first component of the original field
     if visualize:
