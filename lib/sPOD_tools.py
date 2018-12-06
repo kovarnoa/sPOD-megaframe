@@ -322,7 +322,7 @@ def sPOD(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
 
     # Determine shift velocities
     velocities = shift_velocities(dx, dt, X, n_velocities,
-                                  v_min=-5, v_max=5, v_step=0.001, n_modes=1)
+                                  v_min=-5, v_max=5, v_step=0.01, n_modes=1)
 
     # plot the first component of the original field
     if visualize:
@@ -342,7 +342,7 @@ def sPOD(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
     Xtilde_frames = [frame(v, dx, dt, Xtilde, nmodes) for v in velocities]
     rel_err = 1
     it = 0
-
+    results = {"rel_err": []} # save all the output results in the dict
     ###########################################################################
     # MAIN LOOP
     ###########################################################################
@@ -357,7 +357,7 @@ def sPOD(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
         ###############################
         R = X - Xtilde
         rel_err = norm(R)/norm(X)  # relative error
-
+        results["rel_err"].append(rel_err)
         ##########################################
         print("iter= ", it, "rel err= ", rel_err)
         ##########################################
@@ -417,4 +417,4 @@ def sPOD(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
     ###########################################################################
     # End of MAIN LOOP
     ###########################################################################
-    return Xtilde_frames
+    return Xtilde_frames, results.get('rel_err')
