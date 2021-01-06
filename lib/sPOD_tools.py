@@ -39,116 +39,50 @@ class frame:
         The frame is represented by an orthogonal system.
     """
 
-    def __init__(self, velocity, dx, dt, fields, number_of_modes=1):
+    def __init__(self, transform, field, number_of_modes=1):
         """
         Initialize a co moving frame.
         """
-        # TODO in future versions the velocity
-        # will be replaced by the transformation mapping
-        self.velocity = velocity # its actually the relative velocity to the labframe
+        data_shape = np.shape(field)
+        self.Ngrid = data_shape[:2]
+        self.Nvar = data_shape[2]    # number of state variables [rho,u,v,p] 
+        self.Ntime = data_shape[3]
+        self.data_shape = data_shape
+        self.domain_size = domain_size
+        self.shifts = shifts    # dim x Ntime shiftarray (one element for one time instance)
+        self.dx = dx            # list of lattice spacings
+        self.dim = size(dx)
+        self.trafo = transform
         self.Nmodes = number_of_modes
-        self.set_orhonormal_system(dx,dt,fields)
+        self.set_orhonormal_system(field)
     #    print("We have initialiced a new field!")
     
-    def shift(self, field):
-        """
-        This function returns the shifted field.
-        $q(x-s,t)=T^s[q(x,t)]$ 
-        here the shift is simply s=c*t
-        In the default case where c= ~velocity of the frame~,
-        the field is shifted back to the original frame. 
-        ( You may call it the labratory frame)
-        Before we shift the frame has to be put togehter in the co-moving
-        frame. This can be done by build_field().
-        
-        """
-        c = self.velocity
-        idx_shift = c*self.dt/self.dx
-        Ix = range(np.size(field,0))
-        qshift = field.copy()
-        for j in range(self.Ntime):
-             #roll(qshift[j,:],int(idx_shift)*j)
-            qshift[:,j] = interp(Ix-idx_shift*j, Ix, qshift[:,j], period=Ix[-1])
-        
-        return qshift
-
-    def inv_shift(self, field):
-        """
-        This function returns the shifted field.
-        $q(x-s,t)=T^s[q(x,t)]$ 
-        here the shift is simply s=c*t
-        In the default case where c= ~velocity of the frame~,
-        the field is shifted back to the original frame. 
-        ( You may call it the labratory frame)
-        Before we shift the frame has to be put togehter in the co-moving
-        frame. This can be done by build_field().
-        
-        """
-        c = -self.velocity
-        idx_shift = c*self.dt/self.dx
-        Ix = range(np.size(field,0))
-        qshift = field.copy()
-        for j in range(self.Ntime):
-             #roll(qshift[j,:],int(idx_shift)*j)
-            qshift[:,j] = interp(Ix-idx_shift*j, Ix, qshift[:,j], period=Ix[-1])
-        
-        return qshift
 
 
-    def reduce(self, field):
+    def reduce(self, field, r):
         """
         Reduce the full filed using the first N modes of the Singular
         Value Decomposition
         """
-        Nmodes = self.Nmodes
-        [U, S, V] = svd(field, full_matrices=True)
-        Sr = S[:Nmodes]
-        Ur = U[:, :Nmodes]
-        Vr = V[:Nmodes, :]
+        [U, S, V] = svd(field, full_matrices=False)
+        Sr = S[:r]
+        Ur = U[:, :r]
+        Vr = V[:r, :]
         
         return Ur, Sr, Vr
         
-    def set_orhonormal_system(self, dx, dt, fields):
+    def set_orhonormal_system(self, field):
         """
         In this routine we set the orthonormal vectors of the SVD in the 
         corresponding frames.
         """
-
-        # spatial lattice spacing
-        self.dx = dx
-        # timestep
-        self.dt = dt
-        # field shape
-        self.field_shape = np.shape(fields)
-        # number of data fields
-        self.Nfields = size(fields, 0)
-        # number of space dimensions
-        self.dim = fields[0].ndim - 1
-        # list of spatial points in each dimension
-        self.Nspace = np.ones(2, dtype=int)
-        self.Nspace[:self.dim] = fields[0].shape[:self.dim]
-        # number of timesteps
-        self.Ntime = fields[0].shape[-1]
-        # number elements in each row of the snapshot matrix
-        self.Nspace_var= np.prod(self.Nspace)*self.Nfields
-        # init field
-        X = []
-
-        # loop
-        for idx_field, field in enumerate(fields):
-            field_shift = self.shift(field)
-            field_shift = reshape(field_shift, [-1, self.Ntime])
-            X.append(field_shift)
-        
-        # in this step we produce the snappshot matrix X_{i,j}
-        # i --- labels the spatial points in every component
-        #       so if Nspace=20 and Nfields=3 then i runs
-        #       from 0 to 20*3-1
-        # j --- labels the temporal points only
-        X = np.concatenate(X) 
+        # transform the field to reference frame
+        field_shift = self.trafo.apply(field)
+        # reshape to snapshot matrix
+        X = reshape(field_shift, [-1, self.Ntime])
         # make an singular value decomposition of the snapshot matrix
         # and reduce it to the specified numer of moddes
-        [U, S, VT] = self.reduce(X)
+        [U, S, VT] = self.reduce(X, self.Nmodes)
         # the snapshot matrix is only stored with reduced number of SVD modes
         self.modal_system = {"U": U, "sigma": S, "VT": VT}
 
@@ -161,7 +95,7 @@ class frame:
         s = self.modal_system["sigma"]
         vh = self.modal_system["VT"]
         # add up all the modes A=U * S * VH
-        return np.reshape(np.dot(u * s, vh), self.field_shape)
+        return np.reshape(np.dot(u * s, vh), self.data_shape)
 
     def plot_field(self, field_index=0):
 
@@ -191,7 +125,7 @@ class frame:
         """ Add two frames for the purpose of concatenating there modes """
         # TODO make check if other and self can be added:
         # are they in the same frame? Are they from the same data etc.
-        new = frame(self.velocity, self.dx, self.dt,
+        new = frame(self.trafo,
                     self.build_field(), self.Nmodes)
         # combine left singular vecotrs
         Uself = self.modal_system["U"]
@@ -309,7 +243,7 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
         Xnew_k = X_coef_shift[:, k*Nmodes:(k+1)*Nmodes] @ alpha_k
         Xnew_k = reshape(Xnew_k, [-1, frame.Ntime])
         frame.Nmodes = Nmodes_reduce  # reduce to the desired number of modes
-        [U, S, VT] = frame.reduce(Xnew_k)
+        [U, S, VT] = frame.reduce(Xnew_k, self.Nmodes)
         frame.modal_system = {"U": U, "sigma": S, "VT": VT}
 
 # %%
@@ -317,13 +251,52 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
 # sPOD algorithm
 ###############################################################################
 
+  
+        
+        
+###############################################################################
+# distribute the residual of frame
+###############################################################################        
+def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter, visualize):     
+    #########################    
+    ## 1.Step: Initialize
+    #########################
+    qtilde = np.zeros_like(q)
+    qtilde_frames = [frame(trafo,qtilde) for trafo in transforms]
+    norm_q = norm(reshape(q,-1))
+    Nframes = len(transforms) 
+    it = 0
+    while rel_err > eps and it < Niter:
 
-def sPOD(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
-
+        it += 1  # counts the number of iterations in the loop
+        #############################
+        # 2.Step: Calculate Residual
+        #############################
+        res = q - qtilde
+        norm_res = norm(reshape(res,-1))
+        rel_err = norm_res/norm_q
+        
+        R_frames = [frame(v, dx, dt, R, nmodes) for v in velocities]
+        
+        for k, Frame in enumerate(Frame_list)
+        
+        
+        
+        
+###############################################################################
+# shift and reduce
+###############################################################################        
+def sPOD_shift_and_reduce(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
+    """
+    First version Shift&Reduce of the shifted POD algorithm published in
+    Reiss2018: https://arxiv.org/abs/1512.01985
+    """
+    
     # Determine shift velocities
     velocities = shift_velocities(dx, dt, X, n_velocities,
                                   v_min=-5, v_max=5, v_step=0.01, n_modes=1)
 
+    
     # plot the first component of the original field
     if visualize:
         subplot(1, 4, 1)
@@ -333,7 +306,7 @@ def sPOD(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
         plt.xlabel(r"$N_x$")
         plt.pause(0.05)
         clims = p.get_clim()
-
+    
     #################################
     # 1. reset loop variables
     ################################
@@ -418,3 +391,8 @@ def sPOD(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
     # End of MAIN LOOP
     ###########################################################################
     return Xtilde_frames, results.get('rel_err')
+
+
+
+    
+        

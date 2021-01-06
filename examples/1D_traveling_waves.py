@@ -10,11 +10,11 @@ Created on Fri Nov 30 09:11:12 2018
 # IMPORTED MODULES
 ###############################################################################
 import sys
-sys.path.append('../lib')
+sys.path.append('./../lib')
 import numpy as np
 from numpy import exp, mod,meshgrid
 import matplotlib.pyplot as plt
-from sPOD_tools import frame, sPOD
+from sPOD_tools import frame, sPOD_shift_and_reduce as sPOD
 ###############################################################################
 
 ##########################################
@@ -53,7 +53,7 @@ fields = [density]  #, velocity]
 n_velocities = 2  # number of velocities to be detected
 
 sPOD_frames, rel_err = sPOD(fields, n_velocities, dx, dt,
-                            nmodes=1, eps=1e-7, Niter=30, visualize=False)
+                            nmodes=2, eps=1e-7, Niter=30, visualize=True)
 
 ###########################################
 # %% 1. visualize your results: sPOD frames
