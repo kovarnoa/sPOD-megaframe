@@ -18,14 +18,13 @@ import matplotlib.pyplot as plt
 from numpy import exp, meshgrid, mod,size, interp, where, diag, reshape, \
                     asarray
 from numpy.linalg import svd, lstsq, norm
+import time
 from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
                                 xlabel, ylabel, figure \
 
 ###############################
 # sPOD general SETTINGS:
 ###############################
-
-##############################
 
 # %%
 ###############################################################################
@@ -39,7 +38,7 @@ class frame:
         The frame is represented by an orthogonal system.
     """
 
-    def __init__(self, transform, field, number_of_modes=1):
+    def __init__(self, transform, field=None, number_of_modes=1):
         """
         Initialize a co moving frame.
         """
@@ -48,14 +47,14 @@ class frame:
         self.Nvar = data_shape[2]    # number of state variables [rho,u,v,p] 
         self.Ntime = data_shape[3]
         self.data_shape = data_shape
-        self.domain_size = domain_size
-        self.shifts = shifts    # dim x Ntime shiftarray (one element for one time instance)
-        self.dx = dx            # list of lattice spacings
-        self.dim = size(dx)
         self.trafo = transform
+        self.dim = self.trafo.dim
         self.Nmodes = number_of_modes
-        self.set_orhonormal_system(field)
-    #    print("We have initialiced a new field!")
+        # transform the field to reference frame
+        if not np.all(field == None):
+            field = self.trafo.apply(field)
+            self.set_orhonormal_system(field)
+        #print("We have initialiced a new field!")
     
 
 
@@ -76,10 +75,9 @@ class frame:
         In this routine we set the orthonormal vectors of the SVD in the 
         corresponding frames.
         """
-        # transform the field to reference frame
-        field_shift = self.trafo.apply(field)
+
         # reshape to snapshot matrix
-        X = reshape(field_shift, [-1, self.Ntime])
+        X = reshape(field, [-1, self.Ntime])
         # make an singular value decomposition of the snapshot matrix
         # and reduce it to the specified numer of moddes
         [U, S, VT] = self.reduce(X, self.Nmodes)
@@ -98,7 +96,8 @@ class frame:
         return np.reshape(np.dot(u * s, vh), self.data_shape)
 
     def plot_field(self, field_index=0):
-
+        
+        
         if self.dim == 1:
             snapshot = self.inv_shift(self.build_field()[field_index])
             # the snapshot matrix is transposed 
@@ -108,8 +107,8 @@ class frame:
             #plt.ylabel(r"$N_t$")
 
         if self.dim == 2:
-            # TODO implement me
-            print("no plot function implemented")
+            qframe = self.build_field()
+            plt.pcolormesh(qframe[...,0,-1])
         
 
     def plot_singular_values(self):
@@ -117,11 +116,11 @@ class frame:
         This function plots the singular values of the frame.
         """
         sigmas = self.modal_system["sigma"]
-        semilogy(sigmas, "r+")
+        semilogy(sigmas/sigmas[0], "r+")
         xlabel(r"$i$")
-        ylabel(r"$\sigma_i$")
+        ylabel(r"$\sigma_i/\sigma_0$")
 
-    def __add__(self, other):
+    def concatenate(self, other):
         """ Add two frames for the purpose of concatenating there modes """
         # TODO make check if other and self can be added:
         # are they in the same frame? Are they from the same data etc.
@@ -144,7 +143,18 @@ class frame:
         new.Nmodes += other.Nmodes
 
         return new
+    
+    def __add__(self, other):
+        """ Add two frames  """
+        if isinstance(other,frame):    
+            new_field = self.build_field() + other.build_field()
+        elif np.shape(other)==self.data_shape:
+            new_field = self.build_field() + other
+        
+        # apply svd and save modes
+        self.set_orhonormal_system(new_field)
 
+        return self
 
 # %%
 ###############################################################################
@@ -257,15 +267,17 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
 ###############################################################################
 # distribute the residual of frame
 ###############################################################################        
-def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter, visualize):     
+def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True):     
     #########################    
     ## 1.Step: Initialize
     #########################
     qtilde = np.zeros_like(q)
-    qtilde_frames = [frame(trafo,qtilde) for trafo in transforms]
+    qtilde_frames = [frame(trafo, qtilde, number_of_modes=nmodes) for trafo in transforms]
     norm_q = norm(reshape(q,-1))
     Nframes = len(transforms) 
     it = 0
+    
+    rel_err = 1
     while rel_err > eps and it < Niter:
 
         it += 1  # counts the number of iterations in the loop
@@ -275,10 +287,17 @@ def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter, visualize):
         res = q - qtilde
         norm_res = norm(reshape(res,-1))
         rel_err = norm_res/norm_q
-        
-        R_frames = [frame(v, dx, dt, R, nmodes) for v in velocities]
-        
-        for k, Frame in enumerate(Frame_list)
+        qtilde = np.zeros_like(q)
+        print( "it=%d rel_err= %4.4e"%(it,rel_err))
+        ###########################
+        # 3. Step: update frames
+        ##########################
+        for k, (trafo,q_frame) in enumerate(zip(transforms,qtilde_frames)):
+            R_frame = frame(trafo, res, number_of_modes=nmodes)
+            q_frame += R_frame.build_field()/Nframes
+            qtilde += trafo.reverse(q_frame.build_field())
+
+    return qtilde_frames, qtilde
         
         
         
@@ -332,9 +351,9 @@ def sPOD_shift_and_reduce(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, 
         rel_err = norm(R)/norm(X)  # relative error
         results["rel_err"].append(rel_err)
         ##########################################
-        print("iter= ", it, "rel err= ", rel_err)
+        print("iter= ", it, "rel err= ", rel_err, "elapsed time=", time.time() - t)
         ##########################################
-
+        t = time.time()
         ###############################
         # 3. Multi shift and reduce R
         ###############################
@@ -357,7 +376,7 @@ def sPOD_shift_and_reduce(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, 
         #######################################################################
         # Xtilde_frames = []
         for k, R_frame in enumerate(R_frames):
-            Xtilde_frames[k] = Xtilde_frames[k] + R_frame
+            Xtilde_frames[k] = Xtilde_frames[k].concatenate(R_frame)
         ###################################################
         # b) Solve (Xtilde+R) * alpha = X for unknown alpha
         #  + the classical method (Reiss2018) uses the
