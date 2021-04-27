@@ -59,7 +59,6 @@ class transforms:
             self.shifts = shifts    # dim x Ntime shiftarray (one element for one time instance)
             self.dx = dx            # list of lattice spacings
             self.dim = size(dx)
-            self.shiftMatrices_pos, self.shiftMatrices_neg = self.init_shifts() # list of shiftoperators (one element for one time instance)
         if trafo_type=="rotation":
             assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
             assert(np.sum(rotation_center)==0), "rotation center should be in the middle!"
@@ -67,7 +66,6 @@ class transforms:
             self.rotation_center = rotation_center # array including center of rotation(x_0, y_0)
             self.dx = dx
             self.dim = size(dx)
-            #self.rotationMatrices_pos, self.rotationMatrices_neg = self.init_rotations()
         if trafo_type=="shiftRot":
             assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
             self.shifts    = shifts    # dim x Ntime shiftarray (one element for one time instance)
@@ -75,12 +73,7 @@ class transforms:
             self.rotation_center = rotation_center
             self.dx = dx
             self.dim = size(dx)
-            # ~ self.shiftMatrices_pos, self.shiftMatrices_neg = self.init_shifts() # list of shiftoperators (one element for one time instance)
-            
-            # Note (MI): at the moment, I am using this just to shift
-            #            an object rotating around an arbitrary point in
-            #            2D to the frame center
-            # Note (MI): I am using ndimage.shift -> no need for shiftMatrices
+        
             
     
     def apply(self, field):
@@ -96,7 +89,7 @@ class transforms:
         
         """
         if self.trafo_type=="shift":
-            return self.shift(field, self.shiftMatrices_pos)
+            return self.shift(field, self.shifts)
         elif self.trafo_type == "rotation":
             return self.rotate(field, self.rotations)
         elif self.trafo_type == "shiftRot":
@@ -118,17 +111,38 @@ class transforms:
         frame. This can be done by build_field().
         """
         if self.trafo_type=="shift":
-            return self.shift(field, self.shiftMatrices_neg)
+            return self.shift(field,-self.shifts)  
         elif self.trafo_type == "rotation":
             return self.rotate(field, -self.rotations)
         elif self.trafo_type == "shiftRot":
             auxField = self.rotate(field,-self.rotations)               #rotate back
             # ~ return self.shift(auxField,self.shiftMatrices_neg)          #shift back and return
-            return self.shift2(auxField,-self.shifts)                   #shift back and return
+            return self.shift(auxField,-self.shifts)                   #shift back and return
         else:
             print("Transformation type: %s not known"%self.trafo_type)
 
-    def shift(self, field, shiftMatrices):
+    # def shift(self, field, shiftMatrices):
+    #     """
+    #     This function returns the shifted field.
+    #     $q(x-s,t)=T^s[q(x,t)]$ 
+    #     here the shift is simply s=c*t
+    #     In the default case where c= ~velocity of the frame~,
+    #     the field is shifted back to the original frame. 
+    #     ( You may call it the labratory frame)
+    #     Before we shift the frame has to be put togehter in the co-moving
+    #     frame. This can be done by build_field().
+        
+    #     """
+    #     Ntime = np.size(field,-1)
+    #     field_shift = np.zeros_like(field)
+    #     for it in range(Ntime):
+    #         vec = np.reshape(field[...,it],-1)
+    #         vec_shift = shiftMatrices[it]@vec
+    #         field_shift[...,it] = np.reshape(vec_shift,self.data_shape[:-1])
+
+    #     return field_shift
+        
+    def shift(self,field,shifts):
         """
         This function returns the shifted field.
         $q(x-s,t)=T^s[q(x,t)]$ 
@@ -140,16 +154,6 @@ class transforms:
         frame. This can be done by build_field().
         
         """
-        Ntime = np.size(field,-1)
-        field_shift = np.zeros_like(field)
-        for it in range(Ntime):
-            vec = np.reshape(field[...,it],-1)
-            vec_shift = shiftMatrices[it]@vec
-            field_shift[...,it] = np.reshape(vec_shift,self.data_shape[:-1])
-
-        return field_shift
-        
-    def shift2(self,field,shifts):
         input_shape = np.shape(field)
         Ntime = np.size(field,-1)
         field_shift = np.zeros([*self.Ngrid,Ntime])
