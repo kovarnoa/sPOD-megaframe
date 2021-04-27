@@ -293,8 +293,11 @@ def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True
         # 3. Step: update frames
         ##########################
         for k, (trafo,q_frame) in enumerate(zip(transforms,qtilde_frames)):
-            R_frame = frame(trafo, res, number_of_modes=nmodes)
-            q_frame += R_frame.build_field()/Nframes
+            #R_frame = frame(trafo, res, number_of_modes=nmodes)
+            res_shifted = trafo.apply(res)
+            q_frame_field = q_frame.build_field()
+            q_frame.set_orhonormal_system(q_frame_field + res_shifted/Nframes)
+            #q_frame += R_frame.build_field()/Nframes
             qtilde += trafo.reverse(q_frame.build_field())
 
     return qtilde_frames, qtilde
