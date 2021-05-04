@@ -115,4 +115,4 @@ plt.colorbar()
     
 # %% Run shifted POD
 transforms = [shift_trafo_1, shift_trafo_2]
-qframes, qtilde = sPOD_distribute_residual(q, transforms, nmodes=nmodes, eps=1e-4, Niter=500, visualize=True)
+qframes, qtilde = sPOD_distribute_residual(q, transforms, nmodes=nmodes, eps=1e-4, Niter=20, visualize=True)
