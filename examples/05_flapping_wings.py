@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-MOVING CYLINDERS VORTEX STREET
+FLAPPING WINGS 
 
-Created on Mon May  3 22:18:56 2021
+Created on Tue May  4 23:50:42 2021
 
-@author: miriam
+@author: Miriam
 """
 
 ###############################################################################
@@ -25,17 +25,18 @@ from scipy.io import loadmat
 #%% Define your DATA:
 ##########################################
 plt.close("all")
-data = loadmat('mask.mat')
+data = loadmat('ALL2.mat')
 data = data['data']
 
 Ngrid = [data.shape[2], data.shape[3]]  # number of grid points in x
 Nt = data.shape[1]                      # Number of time intervalls
-Nvar = data.shape[0]                    # Number of variables
+Nvar = 1# data.shape[0]                    # Number of variables
 nmodes = 1                              # reduction of singular values
 
 data_shape = [*Ngrid,Nvar,Nt]
                # size of time intervall
-T = 1000.                # total time
+freq    = 0.1
+T       = 1/freq*4       # total time
 L = np.asarray([1, 1])   # total domain size
 x,y = (np.linspace(0, L[i], Ngrid[i]) for i in range(2))
 time = np.linspace(0, T, Nt)
@@ -45,23 +46,22 @@ c = dx/dt
 [Y,X] = meshgrid(y,x)
 
 q = np.zeros(data_shape)
+#for nvar in range(Nvar):
 for it,t in enumerate(time):
     q[:,:,0,it] = np.array(data[0,it,:,:]).T
 
-shift1 = np.zeros([2,Nt])
-shift2 = np.zeros([2,Nt])
-shift1[0,:] = 0 * time                      # frame 1, shift in x
-shift1[1,:] = 0 * time                      # frame 1, shift in y
-shift2[0,:] = 0 * time                      # frame 2, shift in x
-shift2[1,:] = -0.25*np.sin(2*pi*0.001*time) # frame 2, shift in y
+rotation1 = np.zeros([Nt])
+rotation2 = np.zeros([Nt])
+rotation1 = pi/4 * np.cos(2*pi*freq*time)    # frame 1
+rotation2 = -pi/4 * np.cos(2*pi*freq*time)   # frame 2
 
 # %% Create Trafo
 
-shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy] )
-shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy] )
-qshift1 = shift_trafo_1.apply(q)
-qshift2 = shift_trafo_2.apply(q)
-qshiftreverse = shift_trafo_2.reverse(shift_trafo_2.apply(q))
+rotation_trafo_1 = transforms(data_shape,L,trafo_type="rotation",dx=[dx,dy],rotations=rotation1,rotation_center=[0*L[0],0*L[1]])
+rotation_trafo_2 = transforms(data_shape,L,trafo_type="rotation",dx=[dx,dy],rotations=rotation2,rotation_center=[0*L[0],0*L[1]])
+qshift1 = rotation_trafo_1.apply(q)
+qshift2 = rotation_trafo_2.apply(q)
+qshiftreverse = rotation_trafo_1.reverse(rotation_trafo_1.apply(q))
 res = q-qshiftreverse
 err = np.linalg.norm(np.reshape(res,-1))/np.linalg.norm(np.reshape(q,-1))
 print("err =  %4.4e "% err)
@@ -70,5 +70,5 @@ plt.colorbar()
 
     
 # %% Run shifted POD
-transforms = [shift_trafo_1, shift_trafo_2]
+transforms = [rotation_trafo_1, rotation_trafo_2]
 qframes, q = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=10, visualize=True)
