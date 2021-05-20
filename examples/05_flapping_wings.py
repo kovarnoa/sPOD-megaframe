@@ -31,7 +31,7 @@ data = data['data']
 Ngrid = [data.shape[2], data.shape[3]]  # number of grid points in x
 Nt = data.shape[1]                      # Number of time intervalls
 Nvar = 1# data.shape[0]                    # Number of variables
-nmodes = 1                              # reduction of singular values
+nmodes = 3                              # reduction of singular values
 
 data_shape = [*Ngrid,Nvar,Nt]
                # size of time intervall
@@ -48,10 +48,11 @@ c = dx/dt
 q = np.zeros(data_shape)
 #for nvar in range(Nvar):
 for it,t in enumerate(time):
-    q[:,:,0,it] = np.array(data[0,it,:,:]).T
+    q[:,:,0,it] = np.array(data[4,it,:,:]).T
 
 rotation1 = np.zeros([Nt])
 rotation2 = np.zeros([Nt])
+rotation3 = np.zeros([Nt])
 rotation1 = pi/4 * np.cos(2*pi*freq*time)    # frame 1
 rotation2 = -pi/4 * np.cos(2*pi*freq*time)   # frame 2
 
@@ -59,8 +60,10 @@ rotation2 = -pi/4 * np.cos(2*pi*freq*time)   # frame 2
 
 rotation_trafo_1 = transforms(data_shape,L,trafo_type="rotation",dx=[dx,dy],rotations=rotation1,rotation_center=[0*L[0],0*L[1]])
 rotation_trafo_2 = transforms(data_shape,L,trafo_type="rotation",dx=[dx,dy],rotations=rotation2,rotation_center=[0*L[0],0*L[1]])
+rotation_trafo_3 = transforms(data_shape,L,trafo_type="rotation",dx=[dx,dy],rotations=rotation3,rotation_center=[0*L[0],0*L[1]])
 qshift1 = rotation_trafo_1.apply(q)
 qshift2 = rotation_trafo_2.apply(q)
+qshift3 = rotation_trafo_3.apply(q)
 qshiftreverse = rotation_trafo_1.reverse(rotation_trafo_1.apply(q))
 res = q-qshiftreverse
 err = np.linalg.norm(np.reshape(res,-1))/np.linalg.norm(np.reshape(q,-1))
@@ -70,5 +73,7 @@ plt.colorbar()
 
     
 # %% Run shifted POD
-transforms = [rotation_trafo_1, rotation_trafo_2]
-qframes, q = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=10, visualize=True)
+transforms = [rotation_trafo_1, rotation_trafo_2, rotation_trafo_3]
+qframes, qtilde = sPOD_distribute_residual(q, transforms, nmodes=3, eps=1e-4, Niter=10, visualize=True)
+
+plt.pcolormesh(X,Y,q[:,:,0,5]-qtilde[:,:,0,5])

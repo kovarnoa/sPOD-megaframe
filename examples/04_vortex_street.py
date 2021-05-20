@@ -19,21 +19,31 @@ import matplotlib.pyplot as plt
 from sPOD_tools import frame, sPOD_distribute_residual
 from transforms import transforms
 from scipy.io import loadmat
+
+from sympy.physics.vector import curl
 ###############################################################################
 
 ##########################################
 #%% Define your DATA:
 ##########################################
 plt.close("all")
-data = loadmat('mask.mat')
-data = data['data']
+ux = loadmat('ux.mat')
+ux = ux['data']
+uy = loadmat('uy.mat')
+uy = uy['data']
 
-Ngrid = [data.shape[2], data.shape[3]]  # number of grid points in x
-Nt = data.shape[1]                      # Number of time intervalls
-Nvar = data.shape[0]                    # Number of variables
+Ngrid = [ux.shape[2], ux.shape[3]]  # number of grid points in x
+Nt = ux.shape[1]                      # Number of time intervalls
+Nvar = ux.shape[0]                    # Number of variables
 nmodes = 1                              # reduction of singular values
 
 data_shape = [*Ngrid,Nvar,Nt]
+
+data = ux
+#data = np.zeros(data_shape)
+#for tau in range(0,Nt):
+#    data[0,tau,:,:] = curl(np.squeeze(ux[0,tau,:,:]),np.squeeze(uy[0,tau,:,:]))
+
                # size of time intervall
 T = 1000.                # total time
 L = np.asarray([1, 1])   # total domain size
@@ -71,4 +81,6 @@ plt.colorbar()
     
 # %% Run shifted POD
 transforms = [shift_trafo_1, shift_trafo_2]
-qframes, q = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=10, visualize=True)
+qframes, qtilde = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=10, visualize=True)
+
+plt.pcolormesh(X,Y,q[:,:,0,5]-qtilde[:,:,0,5])
