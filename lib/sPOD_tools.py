@@ -297,8 +297,8 @@ def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True
             res_shifted = trafo.apply(res)
             q_frame_field = q_frame.build_field()
             q_frame.set_orhonormal_system(q_frame_field + res_shifted/Nframes)
-            #q_frame += R_frame.build_field()/Nframes
             qtilde += trafo.reverse(q_frame.build_field())
+            q_frame.plot_field()
 
     return qtilde_frames, qtilde
         

@@ -107,4 +107,5 @@ plt.colorbar()
     
 # %% Run shifted POD
 transforms = [shift_trafo_1, shift_trafo_2]
-qframes, q = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=20, visualize=True)
+qframes, qapprox = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=20, visualize=True)
+plt.pcolormesh(X,Y,q[...,0,10]-qapprox[...,0,10])
