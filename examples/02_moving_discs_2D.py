@@ -18,8 +18,9 @@ from numpy import exp, mod,meshgrid,pi,sin,size
 import matplotlib.pyplot as plt
 from sPOD_tools import frame, sPOD_distribute_residual
 from transforms import transforms
+from farge_colormaps import farge_colormap_multi
 ###############################################################################
-
+cm = farge_colormap_multi()
 ##########################################
 #%% Define your DATA:
 ##########################################
@@ -79,15 +80,15 @@ for it,t in enumerate(time):
 
 # %% Create Trafo
 
-shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy] )
-shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy] )
+shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy], use_scipy_transform=False )
+shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy], use_scipy_transform=False )
 qshift1 = shift_trafo_1.apply(q)
 qshift2 = shift_trafo_2.apply(q)
 qshiftreverse = shift_trafo_2.reverse(shift_trafo_2.apply(q))
 res = q-qshiftreverse
 err = np.linalg.norm(np.reshape(res,-1))/np.linalg.norm(np.reshape(q,-1))
 print("err =  %4.4e "% err)
-plt.pcolormesh(X,Y,q[...,0,0]-qshiftreverse[...,0,0])
+plt.pcolormesh(X,Y,q[...,0,0]-qshiftreverse[...,0,0],cmap = cm)
 plt.colorbar()
 # %% Test Trafo
 
@@ -107,4 +108,4 @@ plt.colorbar()
     
 # %% Run shifted POD
 transforms = [shift_trafo_1, shift_trafo_2]
-qframes, q = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=20, visualize=True)
+#qframes, q = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=20, visualize=True)

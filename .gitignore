@@ -106,3 +106,6 @@ venv.bak/
 *.un~
 
 *.mat
+
+# pycharm
+.idea/
