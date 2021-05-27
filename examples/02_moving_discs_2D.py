@@ -16,7 +16,7 @@ sys.path.append('../lib')
 import numpy as np
 from numpy import exp, mod,meshgrid,pi,sin,size
 import matplotlib.pyplot as plt
-from sPOD_tools import frame, sPOD_distribute_residual
+from sPOD_tools import frame, sPOD_distribute_residual,shifted_rPCA
 from transforms import transforms
 from farge_colormaps import farge_colormap_multi
 ###############################################################################
@@ -109,3 +109,4 @@ plt.colorbar()
 # %% Run shifted POD
 transforms = [shift_trafo_1, shift_trafo_2]
 #qframes, q = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=20, visualize=True)
+qframes, qtilde = shifted_rPCA(np.reshape(q,[-1,Nt]), transforms, eps=1e-4, Niter=50, visualize=True)

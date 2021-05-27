@@ -9,7 +9,7 @@ Created on Tue Mar  9 10:31:40 2021
 
 """
 from scipy import sparse
-from numpy import exp, mod,meshgrid,pi,sin,size
+from numpy import exp, mod, meshgrid, pi, sin ,size, reshape
 import numpy as np
 import scipy.ndimage as ndimage
 # %%    
@@ -48,7 +48,7 @@ class transforms:
     """
 
     def __init__(self, data_shape, domain_size, trafo_type="shift", shifts = None, \
-                 dx = None, rotations=None, rotation_center = None, use_scipy_transform=True):
+                 dx = None, rotations=None, rotation_center = None, use_scipy_transform = True):
         self.Ngrid = data_shape[:2]
         self.Nvar = data_shape[2]
         self.Ntime = data_shape[3]
@@ -60,7 +60,7 @@ class transforms:
                 self.shift = self.shift_scipy
                 self.shifts_pos =  shifts    # dim x Ntime shiftarray (one element for one time instance)
                 self.shifts_neg = -shifts  # dim x Ntime shiftarray (one element for one time instance)
-            else: # own implementation for shifts:
+            else: # own implementation for shifts: is much faster then ndimage
                 self.shifts_pos, self.shifts_neg = self.init_shifts(dx, domain_size, self.Ngrid, shifts)
                 self.shift = self.shift1
             self.dx = dx            # list of lattice spacings
@@ -94,16 +94,20 @@ class transforms:
         frame. This can be done by build_field().
         
         """
+        input_shape = np.shape(field)
+        field = reshape(field,self.data_shape)
         if self.trafo_type=="shift":
-            return self.shift(field, self.shifts_pos)
+            ftrans = self.shift(field, self.shifts_pos)
         elif self.trafo_type == "rotation":
-            return self.rotate(field, self.rotations)
+            ftrans = self.rotate(field, self.rotations)
         elif self.trafo_type == "shiftRot":
             # ~ auxField = self.shift(field,self.shiftMatrices_pos)         #shift to origin
             auxField = self.shift2(field,self.shifts)                   #shift to origin
-            return self.rotate(auxField,self.rotations)                 #rotate and return
+            ftrans = self.rotate(auxField,self.rotations)                 #rotate and return
         else:
             print("Transformation type: %s not known"%self.trafo_type)
+
+        return reshape(ftrans, input_shape)
             
     def reverse(self, field):
         """
@@ -116,16 +120,20 @@ class transforms:
         Before we shift the frame has to be put togehter in the co-moving
         frame. This can be done by build_field().
         """
+        input_shape = np.shape(field)
+        field = reshape(field, self.data_shape)
         if self.trafo_type=="shift":
-            return self.shift(field,self.shifts_neg)
+            ftrans = self.shift(field,self.shifts_neg)
         elif self.trafo_type == "rotation":
-            return self.rotate(field, -self.rotations)
+            ftrans = self.rotate(field, -self.rotations)
         elif self.trafo_type == "shiftRot":
             auxField = self.rotate(field,-self.rotations)               #rotate back
             # ~ return self.shift(auxField,self.shiftMatrices_neg)          #shift back and return
-            return self.shift(auxField,-self.shifts)                   #shift back and return
+            ftrans = self.shift(auxField,-self.shifts)                   #shift back and return
         else:
             print("Transformation type: %s not known"%self.trafo_type)
+
+        return reshape(ftrans, input_shape)
 
     def shift1(self, field, shifts):
         """
@@ -270,7 +278,7 @@ class transforms:
             # compute the 4 langrage basis elements
             lagrange_coefs = [lagrange(delta_idx, [-1,0,1,2], j) for j in range(4)]
             # for the subdiagonals as well
-            lagrange_coefs = lagrange_coefs +lagrange_coefs
+            lagrange_coefs = lagrange_coefs + lagrange_coefs
             
             # band diagonals for the shift matrix
             offsets = np.concatenate([idx_list,idx_subdiags_list])

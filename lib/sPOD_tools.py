@@ -3,7 +3,7 @@
 """
 Created on Thu Nov 29 09:19:19 2018
 
-@author: Philipp Krah, Jiahan Wang
+@author: Philipp Krah
 
 This package provides all the infrastructure for the 
     
@@ -38,22 +38,22 @@ class frame:
         The frame is represented by an orthogonal system.
     """
 
-    def __init__(self, transform, field=None, number_of_modes=1):
+    def __init__(self, transform, field=None, number_of_modes=None):
         """
         Initialize a co moving frame.
         """
-        data_shape = np.shape(field)
-        self.Ngrid = data_shape[:2]
-        self.Nvar = data_shape[2]    # number of state variables [rho,u,v,p] 
-        self.Ntime = data_shape[3]
+        data_shape = transform.data_shape
         self.data_shape = data_shape
+        self.Ngrid = np.prod(data_shape[:3])
+        self.Ntime = data_shape[3]
         self.trafo = transform
         self.dim = self.trafo.dim
-        self.Nmodes = number_of_modes
+        if not number_of_modes:
+            self.Nmodes = self.Ntime
         # transform the field to reference frame
         if not np.all(field == None):
             field = self.trafo.apply(field)
-            self.set_orhonormal_system(field)
+            self.set_orthonormal_system(field)
         #print("We have initialiced a new field!")
     
 
@@ -70,7 +70,7 @@ class frame:
         
         return Ur, Sr, Vr
         
-    def set_orhonormal_system(self, field):
+    def set_orthonormal_system(self, field):
         """
         In this routine we set the orthonormal vectors of the SVD in the 
         corresponding frames.
@@ -93,7 +93,7 @@ class frame:
         s = self.modal_system["sigma"]
         vh = self.modal_system["VT"]
         # add up all the modes A=U * S * VH
-        return np.reshape(np.dot(u * s, vh), self.data_shape)
+        return np.dot(u * s, vh)
 
     def plot_field(self, field_index=0):
         
@@ -152,7 +152,7 @@ class frame:
             new_field = self.build_field() + other
         
         # apply svd and save modes
-        self.set_orhonormal_system(new_field)
+        self.set_orthonormal_system(new_field)
 
         return self
 
@@ -190,6 +190,29 @@ def shift_velocities(dx, dt, fields, n_velocities, v_min, v_max, v_step, n_modes
 
     return c_shifts
 
+###############################################################################
+# Proximal operators
+###############################################################################
+def shrink(X, tau):
+    """
+    Proximal Operator for 1 norm minimization
+
+    :param X: input matrix or vector
+    :param tau: threshold
+    :return: argmin_X1 tau * || X1 ||_1 + 1/2|| X1 - X||_F^2
+    """
+    return np.sign(X)*np.maximum(np.abs(X)-tau, 0)
+
+def SVT(X, mu):
+    """
+    Proximal Operator for schatten 1 norm minimization
+    :param X: input matrix for thresholding
+    :param mu: threshold
+    :return: argmin_X1 mu|| X1 ||_* + 1/2|| X1 - X||_F^2
+    """
+    u, s, vt = np.linalg.svd(X, full_matrices=False)
+    s = shrink(s, mu)
+    return (u, s, vt)
 
 ###############################################################################
 # least square minimization
@@ -267,16 +290,16 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
 ###############################################################################
 # distribute the residual of frame
 ###############################################################################        
-def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True):     
+def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True):
     #########################    
     ## 1.Step: Initialize
     #########################
+
     qtilde = np.zeros_like(q)
     qtilde_frames = [frame(trafo, qtilde, number_of_modes=nmodes) for trafo in transforms]
     norm_q = norm(reshape(q,-1))
     Nframes = len(transforms) 
     it = 0
-    
     rel_err = 1
     while rel_err > eps and it < Niter:
 
@@ -297,23 +320,170 @@ def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True
             #R_frame = frame(trafo, res, number_of_modes=nmodes)
             res_shifted = trafo.apply(res)
             q_frame_field = q_frame.build_field()
-            q_frame.set_orhonormal_system(q_frame_field + res_shifted/Nframes)
+            q_frame.set_orthonormal_system(q_frame_field + res_shifted/Nframes)
             #q_frame += R_frame.build_field()/Nframes
             qtilde += trafo.reverse(q_frame.build_field())
         elapsed = time.time() - t
         print( "elapsed time=%d"%(elapsed))
 
     return qtilde_frames, qtilde
-        
-        
-        
-        
+
+
+###############################################################################
+# shifted rPCA
+###############################################################################
+def shifted_rPCA_(snapshot_matrix, transforms, eps, Niter=1, visualize=True):
+    """
+    Currently this method doesnt work. Its very similar to distribute residual, but does not seem to converge
+    :param snapshot_matrix: M x N matrix with N beeing the number of snapshots
+    :param transforms: Transformations
+    :param eps: stopping criteria
+    :param Niter: maximal number of iterations
+    :param visualize: if true: show intermediet results
+    :return:
+    """
+    assert (np.ndim(snapshot_matrix) == 2), "Are you stephen hawking trying to solve this problem in 16 dimensions?" \
+                             "Please give me a snapshotmatrix with every snapshot in one column"
+    #########################
+    ## 1.Step: Initialize
+    #########################
+    qtilde = np.zeros_like(snapshot_matrix)
+    E = np.zeros_like(snapshot_matrix)
+    Y = np.zeros_like(snapshot_matrix)
+    qtilde_frames = [frame(trafo, qtilde) for trafo in transforms]
+    q = snapshot_matrix.copy()
+    norm_q = norm(reshape(q, -1))
+    it = 0
+    M, N = np.shape(q)
+    mu = M * N / (4 * np.sum(np.abs(q)))
+    lambd = 10 * 1 / np.sqrt(np.maximum(M, N))
+    thresh = 1e-7 * norm_q
+    mu_inv = 1 / mu
+    rel_err = 1
+    res = q # in the first step the residuum is q since qtilde is 0
+    while rel_err > eps and it < Niter:
+
+        it += 1  # counts the number of iterations in the loop
+        #############################
+        # 2.Step: set qtilde to 0
+        #############################
+        qtilde = np.zeros_like(q)
+        ranks = []
+        ###########################
+        # 3. Step: update frames
+        ##########################
+        t = time.time()
+        for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
+            # R_frame = frame(trafo, res, number_of_modes=nmodes)
+            q_frame_field = q_frame.build_field()
+            res_shifted = trafo.apply(res + mu_inv * Y)
+            q_frame_field += res_shifted
+            [U, S, VT] = SVT(q_frame_field, mu_inv)
+            rank = np.sum(S > 0)
+            q_frame.modal_system = {"U": U[:,:rank], "sigma": S[:rank], "VT": VT[:rank,:]}
+            # q_frame += R_frame.build_field()/Nframes
+            qtilde += trafo.reverse(q_frame.build_field())
+            ranks.append(rank) # list of ranks for each frame
+        ###########################
+        # 4. Step: update noice term
+        ##########################
+        E = shrink(q - qtilde + mu_inv * Y, lambd * mu_inv)
+        #############################
+        # 5. Step: update multiplier
+        #############################
+        res = q - qtilde - E
+        Y = Y + mu * (res)
+
+        norm_res = norm(reshape(res, -1))
+        rel_err = norm_res / norm_q
+
+        elapsed = time.time() - t
+        print("it=%d rel_err= %4.4e tcpu = %2.2f, ranks_frame = " % (it, rel_err, elapsed), *ranks)
+
+    return qtilde_frames, qtilde
+
+
+
+###############################################################################
+# shifted rPCA
+###############################################################################
+def shifted_rPCA(snapshot_matrix, transforms, eps, Niter=1, visualize=True):
+    """
+    :param snapshot_matrix: M x N matrix with N beeing the number of snapshots
+    :param transforms: Transformations
+    :param eps: stopping criteria
+    :param Niter: maximal number of iterations
+    :param visualize: if true: show intermediet results
+    :return:
+    """
+    assert (np.ndim(snapshot_matrix) == 2), "Are you stephen hawking trying to solve this problem in 16 dimensions?" \
+                             "Please give me a snapshotmatrix with every snapshot in one column"
+    #########################
+    ## 1.Step: Initialize
+    #########################
+    qtilde = np.zeros_like(snapshot_matrix)
+    E = np.zeros_like(snapshot_matrix)
+    Y = np.zeros_like(snapshot_matrix)
+    qtilde_frames = [frame(trafo, qtilde) for trafo in transforms]
+    q = snapshot_matrix.copy()
+    norm_q = norm(reshape(q, -1))
+    it = 0
+    M, N = np.shape(q)
+    mu = M * N / (4 * np.sum(np.abs(q)))*0.001
+    lambd = 10 * 1 / np.sqrt(np.maximum(M, N))
+    thresh = 1e-7 * norm_q
+    mu_inv = 1 / mu
+    rel_err = 1
+    while rel_err > eps and it < Niter:
+
+        it += 1  # counts the number of iterations in the loop
+        #############################
+        # 2.Step: set qtilde to 0
+        #############################
+        qtilde = np.zeros_like(q)
+        ranks = []
+        ###########################
+        # 3. Step: update frames
+        ##########################
+        t = time.time()
+        for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
+            qtemp = 0
+            for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
+                if p != k:
+                    qtemp += trafo_p.reverse(frame_p.build_field())
+
+            qk = trafo.apply(q - qtemp - E + mu_inv * Y)
+            [U, S, VT] = SVT(qk, mu_inv)
+            rank = np.sum(S > 0) + 1
+            q_frame.modal_system = {"U": U[:,:rank], "sigma": S[:rank], "VT": VT[:rank,:]}
+            ranks.append(rank) # list of ranks for each frame
+            qtilde += trafo.reverse(q_frame.build_field())
+        ###########################
+        # 4. Step: update noice term
+        ##########################
+        E = shrink(q - qtilde + mu_inv * Y, lambd * mu_inv)
+        #############################
+        # 5. Step: update multiplier
+        #############################
+        res = q - qtilde - E
+        Y = Y + mu * (res)
+
+        norm_res = norm(reshape(res, -1))
+        rel_err = norm_res / norm_q
+
+        elapsed = time.time() - t
+        print("it=%d rel_err= %4.4e tcpu = %2.2f, ranks_frame = " % (it, rel_err, elapsed), *ranks)
+
+    return qtilde_frames, qtilde
+
+
 ###############################################################################
 # shift and reduce
 ###############################################################################        
 def sPOD_shift_and_reduce(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
     """
-    First version Shift&Reduce of the shifted POD algorithm published in
+    First version Shift&Reduce of the
+    shifted POD algorithm published in
     Reiss2018: https://arxiv.org/abs/1512.01985
     """
     

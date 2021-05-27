@@ -47,7 +47,7 @@ class frame:
         # will be replaced by the transformation mapping
         self.velocity = velocity # its actually the relative velocity to the labframe
         self.Nmodes = number_of_modes
-        self.set_orhonormal_system(dx,dt,fields)
+        self.set_orthonormal_system(dx,dt,fields)
     #    print("We have initialiced a new field!")
     
     def shift(self, field):
@@ -108,7 +108,7 @@ class frame:
         
         return Ur, Sr, Vr
         
-    def set_orhonormal_system(self, dx, dt, fields):
+    def set_orthonormal_system(self, dx, dt, fields):
         """
         In this routine we set the orthonormal vectors of the SVD in the 
         corresponding frames.
