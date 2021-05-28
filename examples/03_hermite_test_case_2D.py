@@ -16,12 +16,13 @@ sys.path.append('../lib')
 import numpy as np
 from numpy import exp, mod,meshgrid,pi,sin,size
 import matplotlib.pyplot as plt
-from sPOD_tools import frame, sPOD_distribute_residual
+from sPOD_tools import frame, sPOD_distribute_residual, shifted_rPCA
 from transforms import transforms
 from plot_utils import show_animation
 from scipy.special import eval_hermite
+from farge_colormaps import farge_colormap_multi
 ###############################################################################
-
+cm = farge_colormap_multi()
 ##########################################
 #%% Define your DATA:
 ##########################################
@@ -29,7 +30,7 @@ plt.close("all")
 Ngrid = [201, 202]  # number of grid points in x
 Nt = 200            # Number of time intervalls
 Nvar = 1            # Number of variables
-nmodes = 20          # reduction of singular values
+nmodes = [10,5]          # reduction of singular values
 
 data_shape = [*Ngrid,Nvar,Nt]
                # size of time intervall
@@ -50,13 +51,16 @@ f = lambda x,l : ((np.tanh(x/l) + 1 ) * 0.5)
 psi = lambda n,x: (2**n*np.math.factorial(n)*np.sqrt(np.pi))**(-0.5)*np.exp(-x**2/2)*eval_hermite(n,x)
 #CoefList = [np.random.rand()) for n in range(20)];
 #CoefList = [c/np.linalg.norm(c) for c in CoefList]
-CoefList = np.exp(0.5*np.arange(0,nmodes))
-Dyadsum1 = lambda x,t : np.sum([c *psi(n,x)*np.cos((n+2)*t/4) for n,c in enumerate(CoefList)],0)
-Dyadsum2 = lambda x,t : np.sum([c *psi(n,x)*np.sin((n+2)*t/4) for n,c in enumerate(CoefList)],0)
+CoefList1 = np.exp(-0.1*np.arange(0,nmodes[0]))
+CoefList2 = np.exp(-0.01*np.arange(0,nmodes[1]))
+Dyadsum1 = lambda x,t : np.sum([c * psi(n, x)*np.cos((n+2)*t/4) for n,c in enumerate(CoefList1)],0)
+Dyadsum2 = lambda x,t : np.sum([c * psi(n, x)*np.sin((n+2)*t/4) for n,c in enumerate(CoefList2)],0)
 field1 = lambda x,y,t: Dyadsum1(x,t)*psi(0,4*y)
 field2 = lambda x,y,t: Dyadsum2(x,t)*psi(0,4*y)
 
 q = np.zeros(data_shape)
+q1 = np.zeros(data_shape)
+q2 = np.zeros(data_shape)
 shift1 = np.zeros([2,Nt])
 shift2 = np.zeros([2,Nt])
 
@@ -75,10 +79,10 @@ for it,t in enumerate(time):
     
     shift2[0,it] = x2-center2[0]
     shift2[1,it] = y2-center2[1]
-    
-    q[...,0,it] =field1(X+5,Y-shift1[1,it],t)+field2(X-shift2[0,it],Y-shift2[1,it],t)
-    #q[...,1,it] = f(phi1,dx)-f(phi2,dx) 
-    d[:,it]=Dyadsum1(x, t)
+
+    d[:, it] = Dyadsum1(x, t)
+    q1[..., 0, it] = field1(X+5,Y,t)
+    q2[..., 0, it] = field2(X, Y, t)
     #plt.pcolormesh(X,Y,q[...,0,it])
     #plt.show()
     #plt.pause(0.001)
@@ -87,16 +91,21 @@ for it,t in enumerate(time):
 
 # %% Create Trafo
 
-shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy] )
-shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy] )
+shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy] , use_scipy_transform=True)
+shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy] , use_scipy_transform=True)
+q = shift_trafo_1.reverse(q1) + shift_trafo_2.reverse(q2)
+
+
+
 qshift1 = shift_trafo_1.apply(q)
 qshift2 = shift_trafo_2.apply(q)
 qshiftreverse = shift_trafo_2.reverse(shift_trafo_2.apply(q))
 res = q-qshiftreverse
 err = np.linalg.norm(np.reshape(res,-1))/np.linalg.norm(np.reshape(q,-1))
 print("err =  %4.4e "% err)
-plt.pcolormesh(X,Y,q[...,0,0]-qshiftreverse[...,0,0])
+plt.pcolormesh(X,Y,q[...,0,0]-qshiftreverse[...,0,0], cmap = cm)
 plt.colorbar()
+plt.show()
 # %% Test Trafo
 
 # figs,axs = plt.subplots(3,1,sharex=True)
@@ -115,4 +124,19 @@ plt.colorbar()
     
 # %% Run shifted POD
 transforms = [shift_trafo_1, shift_trafo_2]
-qframes, qtilde = sPOD_distribute_residual(q, transforms, nmodes=nmodes, eps=1e-4, Niter=500, visualize=True)
+qframes, qtilde = sPOD_distribute_residual(np.reshape(q,[-1,Nt]), transforms, nmodes=nmodes, eps=1e-4, Niter=50, visualize=True)
+#qframes, qtilde = shifted_rPCA(np.reshape(q,[-1,Nt]), transforms, eps=1e-10, Niter=500, visualize=True)
+
+U, S1, VT = np.linalg.svd(np.reshape(q1,[-1,Nt]),full_matrices=False)
+U, S2, VT = np.linalg.svd(np.reshape(q2,[-1,Nt]),full_matrices=False)
+S1f = qframes[0].modal_system["sigma"]
+S2f = qframes[1].modal_system["sigma"]
+plt.figure(3)
+plt.semilogy(S1, '--*', label = r"exact $q^1$ ")
+plt.semilogy(S2, '-o', label = r"exact $q^2$ ")
+plt.semilogy(S1f, 'x', label = r"sPOD $q^1$")
+plt.semilogy(S2f, '<', label = r"sPOD $q^2$")
+plt.xlabel(r"rank $r_k$")
+plt.ylabel(r"singular values $\sigma_r(q^k)$")
+plt.xlim([-1,50])
+plt.legend()

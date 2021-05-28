@@ -9,7 +9,7 @@ Created on Tue Mar  9 10:31:40 2021
 
 """
 from scipy import sparse
-from numpy import exp, mod,meshgrid,pi,sin,size
+from numpy import exp, mod, meshgrid, pi, sin ,size, reshape
 import numpy as np
 import scipy.ndimage as ndimage
 # %%    
@@ -48,7 +48,7 @@ class transforms:
     """
 
     def __init__(self, data_shape, domain_size, trafo_type="shift", shifts = None, \
-                 dx = None, rotations=None, rotation_center = None):
+                 dx = None, rotations=None, rotation_center = None, use_scipy_transform = True):
         self.Ngrid = data_shape[:2]
         self.Nvar = data_shape[2]
         self.Ntime = data_shape[3]
@@ -56,7 +56,13 @@ class transforms:
         self.domain_size = domain_size
         self.trafo_type = trafo_type
         if trafo_type=="shift":
-            self.shifts = shifts    # dim x Ntime shiftarray (one element for one time instance)
+            if use_scipy_transform:
+                self.shift = self.shift_scipy
+                self.shifts_pos =  shifts    # dim x Ntime shiftarray (one element for one time instance)
+                self.shifts_neg = -shifts  # dim x Ntime shiftarray (one element for one time instance)
+            else: # own implementation for shifts: is much faster then ndimage
+                self.shifts_pos, self.shifts_neg = self.init_shifts(dx, domain_size, self.Ngrid, shifts)
+                self.shift = self.shift1
             self.dx = dx            # list of lattice spacings
             self.dim = size(dx)
         if trafo_type=="rotation":
@@ -88,16 +94,20 @@ class transforms:
         frame. This can be done by build_field().
         
         """
+        input_shape = np.shape(field)
+        field = reshape(field,self.data_shape)
         if self.trafo_type=="shift":
-            return self.shift(field, self.shifts)
+            ftrans = self.shift(field, self.shifts_pos)
         elif self.trafo_type == "rotation":
-            return self.rotate(field, self.rotations)
+            ftrans = self.rotate(field, self.rotations)
         elif self.trafo_type == "shiftRot":
             # ~ auxField = self.shift(field,self.shiftMatrices_pos)         #shift to origin
             auxField = self.shift2(field,self.shifts)                   #shift to origin
-            return self.rotate(auxField,self.rotations)                 #rotate and return
+            ftrans = self.rotate(auxField,self.rotations)                 #rotate and return
         else:
             print("Transformation type: %s not known"%self.trafo_type)
+
+        return reshape(ftrans, input_shape)
             
     def reverse(self, field):
         """
@@ -110,39 +120,43 @@ class transforms:
         Before we shift the frame has to be put togehter in the co-moving
         frame. This can be done by build_field().
         """
+        input_shape = np.shape(field)
+        field = reshape(field, self.data_shape)
         if self.trafo_type=="shift":
-            return self.shift(field,-self.shifts)  
+            ftrans = self.shift(field,self.shifts_neg)
         elif self.trafo_type == "rotation":
-            return self.rotate(field, -self.rotations)
+            ftrans = self.rotate(field, -self.rotations)
         elif self.trafo_type == "shiftRot":
             auxField = self.rotate(field,-self.rotations)               #rotate back
             # ~ return self.shift(auxField,self.shiftMatrices_neg)          #shift back and return
-            return self.shift(auxField,-self.shifts)                   #shift back and return
+            ftrans = self.shift(auxField,-self.shifts)                   #shift back and return
         else:
             print("Transformation type: %s not known"%self.trafo_type)
 
-    # def shift(self, field, shiftMatrices):
-    #     """
-    #     This function returns the shifted field.
-    #     $q(x-s,t)=T^s[q(x,t)]$ 
-    #     here the shift is simply s=c*t
-    #     In the default case where c= ~velocity of the frame~,
-    #     the field is shifted back to the original frame. 
-    #     ( You may call it the labratory frame)
-    #     Before we shift the frame has to be put togehter in the co-moving
-    #     frame. This can be done by build_field().
-        
-    #     """
-    #     Ntime = np.size(field,-1)
-    #     field_shift = np.zeros_like(field)
-    #     for it in range(Ntime):
-    #         vec = np.reshape(field[...,it],-1)
-    #         vec_shift = shiftMatrices[it]@vec
-    #         field_shift[...,it] = np.reshape(vec_shift,self.data_shape[:-1])
+        return reshape(ftrans, input_shape)
 
-    #     return field_shift
+    def shift1(self, field, shifts):
+        """
+        This function returns the shifted field.
+        $q(x-s,t)=T^s[q(x,t)]$
+        here the shift is simply s=c*t
+        In the default case where c= ~velocity of the frame~,
+        the field is shifted back to the original frame.
+        ( You may call it the labratory frame)
+        Before we shift the frame has to be put togehter in the co-moving
+        frame. This can be done by build_field().
         
-    def shift(self,field,shifts):
+        """
+        Ntime = np.size(field,-1)
+        field_shift = np.zeros_like(field)
+        for it in range(Ntime):
+            vec = np.reshape(field[...,it],-1)
+            vec_shift = shifts[it]@vec
+            field_shift[...,it] = np.reshape(vec_shift,self.data_shape[:-1])
+
+        return field_shift
+        
+    def shift_scipy(self,field,shifts):
         """
         This function returns the shifted field.
         $q(x-s,t)=T^s[q(x,t)]$ 
@@ -158,7 +172,7 @@ class transforms:
         Ntime = np.size(field,-1)
         field_shift = np.zeros([*self.Ngrid,Ntime])
         for it in range(Ntime):
-            DeltaS = -np.divide(shifts[:,it],self.dx)                   #this is quite necessary
+            DeltaS = -np.divide(shifts[:,it],self.dx)
             q = np.reshape(field[...,it], self.Ngrid)
             field_shift[...,it] = ndimage.shift(q,DeltaS,mode='wrap',order=2)
         return np.reshape(field_shift,input_shape)
@@ -179,16 +193,16 @@ class transforms:
             
             
             
-    def init_shifts(self):
+    def init_shifts(self, dX, domain_size, Ngrid, shifts):
         ### implement pos shift matrix ###
         shift_pos_mat_list = []
                 
-        Nx, Ny = self.Ngrid
-        Lx, Ly = self.domain_size
-        dx, dy = self.dx
+        Nx, Ny = Ngrid
+        Lx, Ly = domain_size
+        dx, dy = dX
         
-        shiftx_pos = self.shifts[0,:]
-        shifty_pos = self.shifts[1,:]
+        shiftx_pos = shifts[0,:]
+        shifty_pos = shifts[1,:]
         
         shiftx_pos_mat_list=self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx)
         shifty_pos_mat_list=self.compute_shift_matrix(shifty_pos, Ly, dy, Ny)
@@ -264,7 +278,7 @@ class transforms:
             # compute the 4 langrage basis elements
             lagrange_coefs = [lagrange(delta_idx, [-1,0,1,2], j) for j in range(4)]
             # for the subdiagonals as well
-            lagrange_coefs = lagrange_coefs +lagrange_coefs
+            lagrange_coefs = lagrange_coefs + lagrange_coefs
             
             # band diagonals for the shift matrix
             offsets = np.concatenate([idx_list,idx_subdiags_list])

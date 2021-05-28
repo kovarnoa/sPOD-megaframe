@@ -104,3 +104,8 @@ venv.bak/
 
 # vim 
 *.un~
+
+*.mat
+
+# pycharm
+.idea/

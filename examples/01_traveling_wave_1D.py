@@ -14,7 +14,7 @@ sys.path.append('./../lib')
 import numpy as np
 from numpy import exp, mod,meshgrid
 import matplotlib.pyplot as plt
-from sPOD_tools import frame, sPOD_shift_and_reduce as sPOD
+from legacysPOD import frame, sPOD_shift_and_reduce as sPOD
 ###############################################################################
 
 ##########################################
@@ -45,7 +45,6 @@ fun = lambda x, t: 0.5 * exp(-(mod((x-c*t), L)-x0)**2/sigma**2) + \
 density = fun(X, T)
 velocity = fun(X, T)
 fields = [density]  #, velocity]
-
 
 #######################################
 # %% CALL THE SPOD algorithm
