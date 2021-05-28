@@ -17,15 +17,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numpy import exp, meshgrid, mod,size, interp, where, diag, reshape, \
                     asarray
+from sklearn.utils.extmath import randomized_svd
 from numpy.linalg import svd, lstsq, norm
 import time
 from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
-                                xlabel, ylabel, figure \
-
+                                xlabel, ylabel, figure
+from warnings import warn
 ###############################
 # sPOD general SETTINGS:
 ###############################
-
 # %%
 ###############################################################################
 # CLASS of CO MOVING FRAMES
@@ -60,19 +60,22 @@ class frame:
     
 
 
-    def reduce(self, field, r):
+    def reduce(self, field, r, use_rSVD = False):
         """
         Reduce the full filed using the first N modes of the Singular
         Value Decomposition
         """
-        [U, S, V] = svd(field, full_matrices=False)
-        Sr = S[:r]
-        Ur = U[:, :r]
-        Vr = V[:r, :]
+        if use_rSVD == True:
+            u, s, vt = randomized_svd(field, n_components=r)
+        else:
+            [U, S, VT] = svd(field, full_matrices=False)
+            s = S[:r]
+            u = U[:, :r]
+            vt = VT[:r, :]
         
-        return Ur, Sr, Vr
+        return u, s, vt
         
-    def set_orthonormal_system(self, field):
+    def set_orthonormal_system(self, field, use_rSVD = False):
         """
         In this routine we set the orthonormal vectors of the SVD in the 
         corresponding frames.
@@ -82,7 +85,7 @@ class frame:
         X = reshape(field, [-1, self.Ntime])
         # make an singular value decomposition of the snapshot matrix
         # and reduce it to the specified numer of moddes
-        [U, S, VT] = self.reduce(X, self.Nmodes)
+        [U, S, VT] = self.reduce(X, self.Nmodes, use_rSVD)
         # the snapshot matrix is only stored with reduced number of SVD modes
         self.modal_system = {"U": U, "sigma": S, "VT": VT}
 
@@ -205,14 +208,23 @@ def shrink(X, tau):
     """
     return np.sign(X)*np.maximum(np.abs(X)-tau, 0)
 
-def SVT(X, mu):
+def SVT(X, mu, nmodes_max = None, use_rSVD = False):
     """
     Proximal Operator for schatten 1 norm minimization
     :param X: input matrix for thresholding
     :param mu: threshold
     :return: argmin_X1 mu|| X1 ||_* + 1/2|| X1 - X||_F^2
     """
-    u, s, vt = np.linalg.svd(X, full_matrices=False)
+    if nmodes_max:
+        if use_rSVD:
+            u, s, vt = randomized_svd(X, n_components=nmodes_max)
+        else:
+            u, s, vt = np.linalg.svd(X, full_matrices=False)
+            s = s[:nmodes_max]
+            u = u[:, :nmodes_max]
+            vt = vt[:nmodes_max, :]
+    else:
+        u, s, vt = np.linalg.svd(X, full_matrices=False)
     s = shrink(s, mu)
     return (u, s, vt)
 
@@ -289,11 +301,26 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
 ###############################################################################
 # distribute the residual of frame
 ###############################################################################        
-def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True):
-    #########################    
+def sPOD_distribute_residual(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=True, use_rSVD = False):
+    """
+    :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
+    :param transforms: Transformations
+    :param nmodes: number of modes allowed in each frame
+    :param eps: stopping criteria
+    :param Niter: maximal number of iterations
+    :param visualize: if true: show intermediet results
+    :return:
+    """
+    assert (np.ndim(snapshot_matrix) == 2), "Are you stephen hawking, trying to solve this problem in 16 dimensions?" \
+                             "Please give me a snapshotmatrix with every snapshot in one column"
+    assert (np.size(snapshot_matrix,0) > np.size(snapshot_matrix,1)),\
+        "GRRRRRR this is not right!!! Number of columns should be smaller then ODE dimension."
+    if use_rSVD:
+        warn("Using rSVD to accelarate decomposition procedure may lead to different results, pls check!")
+    #########################
     ## 1.Step: Initialize
     #########################
-
+    q = snapshot_matrix.copy()
     qtilde = np.zeros_like(q)
     Nframes = len(transforms)
     if np.size(nmodes) != Nframes:
@@ -321,7 +348,7 @@ def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True
             #R_frame = frame(trafo, res, number_of_modes=nmodes)
             res_shifted = trafo.apply(res)
             q_frame_field = q_frame.build_field()
-            q_frame.set_orthonormal_system(q_frame_field + res_shifted/Nframes)
+            q_frame.set_orthonormal_system(q_frame_field + res_shifted/Nframes, use_rSVD)
             qtilde += trafo.reverse(q_frame.build_field())
         elapsed = time.time() - t
         print("it=%d rel_err= %4.4e t_cpu = %2.2f" % (it, rel_err, elapsed))
@@ -407,24 +434,40 @@ def sPOD_distribute_residual(q, transforms, nmodes, eps, Niter=1, visualize=True
 ###############################################################################
 # shifted rPCA
 ###############################################################################
-def shifted_rPCA(snapshot_matrix, transforms, eps, Niter=1, visualize=True):
+def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=1, use_rSVD= False, visualize=True):
     """
-    :param snapshot_matrix: M x N matrix with N beeing the number of snapshots
+    :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
     :param transforms: Transformations
+    :param nmodes_max: maximal number of modes allowed in each frame, default is the number of snapshots N
+                    Note: it is good to put a number here that is large enough to get the error down but smaller then N,
+                    because it will increase the performance of the algorithm
     :param eps: stopping criteria
     :param Niter: maximal number of iterations
     :param visualize: if true: show intermediet results
     :return:
     """
-    assert (np.ndim(snapshot_matrix) == 2), "Are you stephen hawking trying to solve this problem in 16 dimensions?" \
+    assert (np.ndim(snapshot_matrix) == 2), "Are you stephen hawking, trying to solve this problem in 16 dimensions?" \
                              "Please give me a snapshotmatrix with every snapshot in one column"
+    assert (np.size(snapshot_matrix,0) > np.size(snapshot_matrix,1)),\
+        "GRRRRRR this is not right!!! Number of columns should be smaller then ODE dimension."
+    if use_rSVD:
+        warn("Using rSVD to accelarate decomposition procedure may lead to different results, pls check!")
     #########################
     ## 1.Step: Initialize
     #########################
     qtilde = np.zeros_like(snapshot_matrix)
     E = np.zeros_like(snapshot_matrix)
     Y = np.zeros_like(snapshot_matrix)
-    qtilde_frames = [frame(trafo, qtilde) for trafo in transforms]
+    Nframes = len(transforms)
+    if not nmodes_max:
+        nmodes_max = np.size(snapshot_matrix,1)
+    if np.size(nmodes_max) != Nframes:
+            nmodes = list([nmodes_max]) * Nframes
+    else:
+            nmodes = nmodes_max
+
+    qtilde_frames = [frame(trafo, qtilde, number_of_modes=nmodes[k]) for k,trafo in enumerate(transforms)]
+
     q = snapshot_matrix.copy()
     norm_q = norm(reshape(q, -1))
     it = 0
@@ -453,7 +496,7 @@ def shifted_rPCA(snapshot_matrix, transforms, eps, Niter=1, visualize=True):
                     qtemp += trafo_p.reverse(frame_p.build_field())
 
             qk = trafo.apply(q - qtemp - E + mu_inv * Y)
-            [U, S, VT] = SVT(qk, mu_inv)
+            [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, use_rSVD)
             rank = np.sum(S > 0) + 1
             q_frame.modal_system = {"U": U[:,:rank], "sigma": S[:rank], "VT": VT[:rank,:]}
             ranks.append(rank) # list of ranks for each frame

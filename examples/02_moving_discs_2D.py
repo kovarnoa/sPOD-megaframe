@@ -82,6 +82,7 @@ for it,t in enumerate(time):
 
 shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy], use_scipy_transform=False )
 shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy], use_scipy_transform=False )
+
 qshift1 = shift_trafo_1.apply(q)
 qshift2 = shift_trafo_2.apply(q)
 qshiftreverse = shift_trafo_2.reverse(shift_trafo_2.apply(q))

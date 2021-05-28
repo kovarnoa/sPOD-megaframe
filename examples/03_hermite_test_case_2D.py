@@ -53,16 +53,15 @@ psi = lambda n,x: (2**n*np.math.factorial(n)*np.sqrt(np.pi))**(-0.5)*np.exp(-x**
 #CoefList = [c/np.linalg.norm(c) for c in CoefList]
 CoefList1 = np.exp(-0.1*np.arange(0,nmodes[0]))
 CoefList2 = np.exp(-0.01*np.arange(0,nmodes[1]))
-Dyadsum1 = lambda x,t : np.sum([c * psi(n, x)*np.cos((n+2)*t/4) for n,c in enumerate(CoefList1)],0)
-Dyadsum2 = lambda x,t : np.sum([c * psi(n, x)*np.sin((n+2)*t/4) for n,c in enumerate(CoefList2)],0)
+Dyadsum1 = lambda x,t : np.sum([c * psi(n, x)*np.cos((n+2)*t) for n,c in enumerate(CoefList1)],0)
+Dyadsum2 = lambda x,t : np.sum([c * psi(n, x)*np.sin((n+2)*t) for n,c in enumerate(CoefList2)],0)
 field1 = lambda x,y,t: Dyadsum1(x,t)*psi(0,4*y)
 field2 = lambda x,y,t: Dyadsum2(x,t)*psi(0,4*y)
 
 q = np.zeros(data_shape)
 q1 = np.zeros(data_shape)
 q2 = np.zeros(data_shape)
-shift1 = np.zeros([2,Nt])
-shift2 = np.zeros([2,Nt])
+shift1, shift2, shift3 = [np.zeros([2,Nt])]*3
 
 d = np.zeros([Ngrid[0],Nt])
 center1 = (0.2*L[0],0.5*L[1])
@@ -80,6 +79,9 @@ for it,t in enumerate(time):
     shift2[0,it] = x2-center2[0]
     shift2[1,it] = y2-center2[1]
 
+    shift3[0,it] = 0
+    shift3[1,it] = 0
+
     d[:, it] = Dyadsum1(x, t)
     q1[..., 0, it] = field1(X+5,Y,t)
     q2[..., 0, it] = field2(X, Y, t)
@@ -93,6 +95,8 @@ for it,t in enumerate(time):
 
 shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy] , use_scipy_transform=True)
 shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy] , use_scipy_transform=True)
+shift_trafo_3 = transforms(data_shape,L, shifts = shift3, dx = [dx,dy], use_scipy_transform=False )
+
 q = shift_trafo_1.reverse(q1) + shift_trafo_2.reverse(q2)
 
 
@@ -124,8 +128,8 @@ plt.show()
     
 # %% Run shifted POD
 transforms = [shift_trafo_1, shift_trafo_2]
-qframes, qtilde = sPOD_distribute_residual(np.reshape(q,[-1,Nt]), transforms, nmodes=nmodes, eps=1e-4, Niter=50, visualize=True)
-#qframes, qtilde = shifted_rPCA(np.reshape(q,[-1,Nt]), transforms, eps=1e-10, Niter=500, visualize=True)
+#qframes, qtilde = sPOD_distribute_residual(np.reshape(q,[-1,Nt]), transforms, nmodes=nmodes, eps=1e-4, Niter=50, visualize=True, use_rSVD=False)
+qframes, qtilde = shifted_rPCA(np.reshape(q,[-1,Nt]), transforms, eps=1e-10, Niter=10, visualize=True)
 
 U, S1, VT = np.linalg.svd(np.reshape(q1,[-1,Nt]),full_matrices=False)
 U, S2, VT = np.linalg.svd(np.reshape(q2,[-1,Nt]),full_matrices=False)
