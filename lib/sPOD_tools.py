@@ -363,10 +363,10 @@ def sPOD_distribute_residual(snapshot_matrix, transforms, nmodes, eps, Niter=1, 
         t = time.time()
         for k, (trafo,q_frame) in enumerate(zip(transforms,qtilde_frames)):
             #R_frame = frame(trafo, res, number_of_modes=nmodes)
-            res_shifted = trafo.apply(res)
+            res_shifted = trafo.reverse(res)
             q_frame_field = q_frame.build_field()
             q_frame.set_orthonormal_system(q_frame_field + res_shifted/Nframes, use_rSVD)
-            qtilde += trafo.reverse(q_frame.build_field())
+            qtilde += trafo.apply(q_frame.build_field())
         elapsed = time.time() - t
         print("it=%d rel_err= %4.4e t_cpu = %2.2f" % (it, rel_err, elapsed))
 
@@ -525,14 +525,14 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
             qtemp = 0
             for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
                 if p != k:
-                    qtemp += trafo_p.reverse(frame_p.build_field())
-            qk = trafo.apply(q - qtemp - E + mu_inv * Y)
+                    qtemp += trafo_p.apply(frame_p.build_field())
+            qk = trafo.reverse(q - qtemp - E + mu_inv * Y)
             #qk = trafo.apply(q - qfield_list[k] - E + mu_inv * Y)
             [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, use_rSVD)
             rank = np.sum(S > 0)
             q_frame.modal_system = {"U": U[:,:rank+1], "sigma": S[:rank+1], "VT": VT[:rank+1,:]}
             ranks.append(rank) # list of ranks for each frame
-            qtilde += trafo.reverse(q_frame.build_field())
+            qtilde += trafo.apply(q_frame.build_field())
         ###########################
         # 4. Step: update noice term
         ##########################
@@ -573,19 +573,19 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
 
 ###############################################################################
 # shift and reduce
-###############################################################################        
+###############################################################################
 def sPOD_shift_and_reduce(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
     """
     First version Shift&Reduce of the
     shifted POD algorithm published in
     Reiss2018: https://arxiv.org/abs/1512.01985
     """
-    
+
     # Determine shift velocities
     velocities = shift_velocities(dx, dt, X, n_velocities,
                                   v_min=-5, v_max=5, v_step=0.01, n_modes=1)
 
-    
+
     # plot the first component of the original field
     if visualize:
         subplot(1, 4, 1)
@@ -595,7 +595,7 @@ def sPOD_shift_and_reduce(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, 
         plt.xlabel(r"$N_x$")
         plt.pause(0.05)
         clims = p.get_clim()
-    
+
     #################################
     # 1. reset loop variables
     ################################
@@ -683,5 +683,5 @@ def sPOD_shift_and_reduce(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, 
 
 
 
-    
-        
+
+

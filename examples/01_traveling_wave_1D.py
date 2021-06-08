@@ -70,7 +70,7 @@ sPOD_frames, qtilde, rel_err = shifted_rPCA(qmat, trafos, nmodes_max = np.max(nm
 k_frame = 0
 plt.figure(num=10)
 plt.subplot(121)
-plt.pcolormesh(sPOD_frames[k_frame].build_field())
+plt.pcolormesh(X,T,sPOD_frames[k_frame].build_field())
 plt.suptitle("sPOD Frames")
 plt.xlabel(r'$N_x$')
 plt.ylabel(r'$N_t$')
@@ -78,7 +78,7 @@ plt.title(r"$q^"+str(k_frame)+"(x,t)$")
 # 2. frame
 k_frame = 1
 plt.subplot(122)
-plt.pcolormesh(sPOD_frames[k_frame].build_field())
+plt.pcolormesh(X,T,sPOD_frames[k_frame].build_field())
 plt.xlabel(r'$N_x$')
 plt.ylabel(r'$N_t$')
 plt.title(r"$q^"+str(k_frame)+"(x,t)$")
