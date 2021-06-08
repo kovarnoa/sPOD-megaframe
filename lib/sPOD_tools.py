@@ -89,7 +89,7 @@ class frame:
         # the snapshot matrix is only stored with reduced number of SVD modes
         self.modal_system = {"U": U, "sigma": S, "VT": VT}
 
-    def build_field(self):
+    def build_field(self, rank = None):
         """
         Calculate the field from the SVD modes: X=U*S*VT
         """
@@ -97,24 +97,13 @@ class frame:
         u = self.modal_system["U"]
         s = self.modal_system["sigma"]
         vh = self.modal_system["VT"]
+        if rank:
+            u = u[:,:rank]
+            s = s[:rank]
+            vh = vh[:rank,:]
         # add up all the modes A=U * S * VH
         return np.dot(u * s, vh)
 
-    def plot_field(self, field_index=0):
-        
-        
-        if self.dim == 1:
-            snapshot = self.inv_shift(self.build_field()[field_index])
-            # the snapshot matrix is transposed 
-            # in order to have the time on the y axis
-            pcolor(snapshot.T)
-            #plt.xlabel(r"$N_x$")
-            #plt.ylabel(r"$N_t$")
-
-        if self.dim == 2:
-            qframe = self.build_field()
-            plt.pcolormesh(qframe[...,0,-1])
-        
 
     def plot_singular_values(self):
         """
@@ -160,6 +149,34 @@ class frame:
         self.set_orthonormal_system(new_field)
 
         return self
+
+# %%
+###############################################################################
+# build frames
+###############################################################################
+
+def build_all_frames(frames, trafos, ranks = None):
+    """
+    Build up the truncated data field from the result of
+     the sPOD decomposition
+    :param frames: List of frames q_k , k = 1,...,F
+    :param trafos: List of transformations T^k
+    :param ranks: integer number r_k > 0
+    :return: q = sum_k T^k q^k where q^k is of rank r_k
+    """
+
+    if ranks is not None:
+        if type(ranks) == int:
+            ranks = [ranks]*len(trafos)
+    else:
+        ranks = [frame.Nmodes for frame in frames]
+
+    qtilde = 0
+    for k, (trafo, frame) in enumerate(zip(trafos, frames)):
+            qtilde += trafo.reverse(frame.build_field(ranks[k]))
+
+    return qtilde
+
 
 # %%
 ###############################################################################
@@ -434,7 +451,7 @@ def sPOD_distribute_residual(snapshot_matrix, transforms, nmodes, eps, Niter=1, 
 ###############################################################################
 # shifted rPCA
 ###############################################################################
-def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=1, use_rSVD= False, visualize=True):
+def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=1, use_rSVD= False, visualize=True, mu = None, lambd = None):
     """
     :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
     :param transforms: Transformations
@@ -459,7 +476,9 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     E = np.zeros_like(snapshot_matrix)
     Y = np.zeros_like(snapshot_matrix)
     Nframes = len(transforms)
-    if not nmodes_max:
+
+    # make a list of the number of maximal ranks in each frame
+    if not np.all(nmodes_max): # check if array is None, if so set nmodes_max onto N
         nmodes_max = np.size(snapshot_matrix,1)
     if np.size(nmodes_max) != Nframes:
             nmodes = list([nmodes_max]) * Nframes
@@ -469,16 +488,21 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     qtilde_frames = [frame(trafo, qtilde, number_of_modes=nmodes[k]) for k,trafo in enumerate(transforms)]
 
     q = snapshot_matrix.copy()
+    Y = 0*q
     norm_q = norm(reshape(q, -1))
     it = 0
     M, N = np.shape(q)
-    mu = M * N / (4 * np.sum(np.abs(q)))*0.001
-    lambd = 10 * 1 / np.sqrt(np.maximum(M, N))
+    #mu = 0.5/norm(q,ord="fro")**2*100
+    if mu is None:
+        mu = N * M / (4 * np.sum(np.abs(q)))
+    if lambd is None:
+        lambd =  1 / np.sqrt(np.maximum(M, N))
     thresh = 1e-7 * norm_q
     mu_inv = 1 / mu
     rel_err = 1
+    res_old = 0
+    rel_err_list = []
     while rel_err > eps and it < Niter:
-
         it += 1  # counts the number of iterations in the loop
         #############################
         # 2.Step: set qtilde to 0
@@ -489,16 +513,24 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
         # 3. Step: update frames
         ##########################
         t = time.time()
+        # qfield_list = []
+        # for k in range(Nframes):
+        #     qtemp = 0
+        #     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
+        #         if p != k:
+        #             qtemp += trafo_p.reverse(frame_p.build_field())
+        #     qfield_list.append(qtemp)
+
         for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
             qtemp = 0
             for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
                 if p != k:
                     qtemp += trafo_p.reverse(frame_p.build_field())
-
             qk = trafo.apply(q - qtemp - E + mu_inv * Y)
+            #qk = trafo.apply(q - qfield_list[k] - E + mu_inv * Y)
             [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, use_rSVD)
-            rank = np.sum(S > 0) + 1
-            q_frame.modal_system = {"U": U[:,:rank], "sigma": S[:rank], "VT": VT[:rank,:]}
+            rank = np.sum(S > 0)
+            q_frame.modal_system = {"U": U[:,:rank+1], "sigma": S[:rank+1], "VT": VT[:rank+1,:]}
             ranks.append(rank) # list of ranks for each frame
             qtilde += trafo.reverse(q_frame.build_field())
         ###########################
@@ -509,16 +541,34 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
         # 5. Step: update multiplier
         #############################
         res = q - qtilde - E
-        Y = Y + mu * (res)
+        Y = Y + mu * res
+
+        #############################
+        # 6. Step: update mu
+        #############################
+        dres = norm(res,ord='fro') - res_old
+        res_old =  norm(res,ord='fro')
+        norm_dres = np.abs(dres)
+        # if mu*norm_dres/norm_q<1e-10:
+        #     mu = 1.6*mu
+        #     mu_inv = 1/mu
+        #     print("increasing mu = ", mu)
+
+
 
         norm_res = norm(reshape(res, -1))
         rel_err = norm_res / norm_q
-
+        rel_err_list.append(rel_err)
         elapsed = time.time() - t
-        print("it=%d rel_err= %4.4e norm(E) = %4.1e tcpu = %2.2f, ranks_frame = " % (
-        it, rel_err, norm(reshape(E, -1)), elapsed), *ranks)
+        print("it=%d rel_err= %4.4e norm(dres) = %4.1e norm(E) = %4.1e tcpu = %2.2f, ranks_frame = " % (
+        it, rel_err, mu*norm_dres/norm_q, norm(reshape(E, -1)), elapsed), *ranks)
 
-    return qtilde_frames, qtilde
+
+    qtilde = 0
+    for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
+            qtilde += trafo_p.reverse(frame_p.build_field())
+
+    return qtilde_frames, qtilde, rel_err_list
 
 
 ###############################################################################

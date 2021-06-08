@@ -55,31 +55,31 @@ class transforms:
         self.data_shape = data_shape
         self.domain_size = domain_size
         self.trafo_type = trafo_type
-        if trafo_type=="shift":
-            if use_scipy_transform:
-                self.shift = self.shift_scipy
-                self.shifts_pos =  shifts    # dim x Ntime shiftarray (one element for one time instance)
-                self.shifts_neg = -shifts  # dim x Ntime shiftarray (one element for one time instance)
-            else: # own implementation for shifts: is much faster then ndimage
-                self.shifts_pos, self.shifts_neg = self.init_shifts(dx, domain_size, self.Ngrid, shifts)
-                self.shift = self.shift1
-            self.dx = dx            # list of lattice spacings
-            self.dim = size(dx)
-        if trafo_type=="rotation":
-            assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
-            assert(np.sum(rotation_center)==0), "rotation center should be in the middle!"
-            self.rotations = rotations # is an array with [omega(t_1), ... omega(t_Ntime)] rotation angles at different timepoints
-            self.rotation_center = rotation_center # array including center of rotation(x_0, y_0)
-            self.dx = dx
-            self.dim = size(dx)
-        if trafo_type=="shiftRot":
-            assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
-            self.shifts    = shifts    # dim x Ntime shiftarray (one element for one time instance)
-            self.rotations = rotations
-            self.rotation_center = rotation_center
-            self.dx = dx
-            self.dim = size(dx)
-        
+        self.dim = size(dx)
+        self.dx = dx  # list of lattice spacings
+        if self.dim == 1:
+            self.shifts_pos, self.shifts_neg = self.init_shifts_1D(dx[0], domain_size[0], self.Ngrid[0], shifts[0,:], Nvar=self.Nvar)
+            self.shift = self.shift1
+        else:
+            if trafo_type=="shift":
+                if use_scipy_transform:
+                    self.shift = self.shift_scipy
+                    self.shifts_pos =  shifts    # dim x Ntime shiftarray (one element for one time instance)
+                    self.shifts_neg = -shifts  # dim x Ntime shiftarray (one element for one time instance)
+                else: # own implementation for shifts: is much faster then ndimage
+                    self.shifts_pos, self.shifts_neg = self.init_shifts_2D(dx, domain_size, self.Ngrid, shifts, Nvar= self.Nvar)
+                    self.shift = self.shift1
+            if trafo_type=="rotation":
+                assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
+                assert(np.sum(rotation_center)==0), "rotation center should be in the middle!"
+                self.rotations = rotations # is an array with [omega(t_1), ... omega(t_Ntime)] rotation angles at different timepoints
+                self.rotation_center = rotation_center # array including center of rotation(x_0, y_0)
+            if trafo_type=="shiftRot":
+                assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
+                self.shifts    = shifts    # dim x Ntime shiftarray (one element for one time instance)
+                self.rotations = rotations
+                self.rotation_center = rotation_center
+
             
     
     def apply(self, field):
@@ -104,6 +104,8 @@ class transforms:
             # ~ auxField = self.shift(field,self.shiftMatrices_pos)         #shift to origin
             auxField = self.shift2(field,self.shifts)                   #shift to origin
             ftrans = self.rotate(auxField,self.rotations)                 #rotate and return
+        elif self.trafo_type == "identity":
+            ftrans = field
         else:
             print("Transformation type: %s not known"%self.trafo_type)
 
@@ -130,6 +132,8 @@ class transforms:
             auxField = self.rotate(field,-self.rotations)               #rotate back
             # ~ return self.shift(auxField,self.shiftMatrices_neg)          #shift back and return
             ftrans = self.shift(auxField,-self.shifts)                   #shift back and return
+        elif self.trafo_type == "identity":
+            ftrans = field
         else:
             print("Transformation type: %s not known"%self.trafo_type)
 
@@ -193,7 +197,7 @@ class transforms:
             
             
             
-    def init_shifts(self, dX, domain_size, Ngrid, shifts):
+    def init_shifts_2D(self, dX, domain_size, Ngrid, shifts, Nvar = 1):
         ### implement pos shift matrix ###
         shift_pos_mat_list = []
                 
@@ -209,20 +213,42 @@ class transforms:
         
         # kron for each time slice
         for shiftx,shifty in zip(shiftx_pos_mat_list,shifty_pos_mat_list):
-            shift_pos_mat_list.append(sparse.kron(shiftx, shifty))
+            shift_pos_mat_list.append(sparse.kron(sparse.kron(shiftx, shifty), sparse.eye(Nvar)))
         
         ### implement neg shift matrix ###
         shift_neg_mat_list = []
         
-        shiftx_neg = -shiftx_pos +dx
-        shifty_neg = -shifty_pos +dy
+        shiftx_neg = -shiftx_pos + dx
+        shifty_neg = -shifty_pos + dy
         shiftx_neg_mat_list=self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx)
         shifty_neg_mat_list=self.compute_shift_matrix(shifty_neg, Ly, dy, Ny)
         
         # kron for each time slice
         for shiftx,shifty in zip(shiftx_neg_mat_list,shifty_neg_mat_list):
-            shift_neg_mat_list.append(sparse.kron(shiftx, shifty))
+            shift_neg_mat_list.append(sparse.kron(sparse.kron(shiftx, shifty), sparse.eye(Nvar)))
         
+        return shift_pos_mat_list, shift_neg_mat_list
+
+    def init_shifts_1D(self, dx, Lx, Nx, shifts, Nvar=1):
+
+
+        ### implement pos shift matrix ###
+        shift_pos_mat_list = []
+        shiftx_pos = shifts[:]
+        shiftx_pos_mat_list = self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx)
+        # kron for each time slice
+        for shiftx in shiftx_pos_mat_list:
+            shift_pos_mat_list.append(sparse.kron(shiftx, sparse.eye(Nvar)))
+
+        ### implement neg shift matrix ###
+        shift_neg_mat_list = []
+        shiftx_neg = -shiftx_pos
+        shiftx_neg_mat_list = self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx)
+
+        # kron for each time slice
+        for shiftx in shiftx_neg_mat_list:
+            shift_neg_mat_list.append(sparse.kron(shiftx, sparse.eye(Nvar)))
+
         return shift_pos_mat_list, shift_neg_mat_list
     
     def init_rotations(self):

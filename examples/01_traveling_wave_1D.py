@@ -14,56 +14,63 @@ sys.path.append('./../lib')
 import numpy as np
 from numpy import exp, mod,meshgrid
 import matplotlib.pyplot as plt
-from legacysPOD import frame, sPOD_shift_and_reduce as sPOD
+from sPOD_tools import shifted_rPCA
+from transforms import transforms
 ###############################################################################
 
 ##########################################
 #%% Define your DATA:
 ##########################################
-plt.close("all")
-Nx = 200  # number of grid points in x
-Nt = 250  # numer of time intervalls
-dt = 0.01  # size of time intervall
-T = Nt*dt  # total time
-L = 2*np.pi  # total domain size
-x0 = L*0.5  # starting point of the gauss puls
-sigma = L/50  # standard diviation of the puls
+#plt.close("all")
+Nx = 400  # number of grid points in x
+Nt = 200  # numer of time intervalls
+
+T = 0.5  # total time
+L = 1  # total domain size
+sigma = 0.015  # standard diviation of the puls
 nmodes = 1  # reduction of singular values
-x = np.linspace(0, L, Nx)
-t = np.linspace(0, T, Nt)
+x = np.arange(0,Nx)/Nx*L
+t =np.arange(0,Nt)/Nt*T
 dx = x[1]-x[0]
 dt = t[1]-t[0]
-c = dx/dt
-[T, X] = meshgrid(t, x)
-
-fun = lambda x, t: 0.5 * exp(-(mod((x-c*t), L)-x0)**2/sigma**2) + \
-                   0.5 * exp(-(mod((x+c*t), L)-x0)**2/sigma**2)
+c = 1
+[X, T] = meshgrid(x, t)
+X = X.T
+T = T.T
+fun = lambda x, t:  exp(-(mod((x-c*t), L)-0.1)**2/sigma**2) + \
+                    exp(-(mod((x+c*t), L)-0.9)**2/sigma**2)
 
 # Define your field as a list of fields:
 # For example the first element in the list can be the density of
 # a flow quantity and the second element could be the velocity in 1D
 density = fun(X, T)
 velocity = fun(X, T)
+shifts1 = np.asarray([c*t])
+shifts2 = np.asarray([-c*t])
 fields = [density]  #, velocity]
 
 #######################################
 # %% CALL THE SPOD algorithm
 ######################################
-n_velocities = 2  # number of velocities to be detected
+data_shape = [Nx,1,1,Nt]
+trafos = [transforms(data_shape ,[L], shifts = shifts1, dx = [dx] , use_scipy_transform=True),
+            transforms(data_shape ,[L], shifts = shifts2, dx = [dx] , use_scipy_transform=True)]
 
-sPOD_frames, rel_err = sPOD(fields, n_velocities, dx, dt,
-                            nmodes=2, eps=1e-7, Niter=30, visualize=True)
+qmat = np.reshape(fields,[Nx,Nt])
+mu = Nx * Nt / (4 * np.sum(np.abs(qmat)))*0.01
+sPOD_frames, qtilde, rel_err = shifted_rPCA(qmat, trafos, nmodes_max = np.max(nmodes)+10, eps=1e-16, Niter=500, use_rSVD=True, mu = mu)
 
 ###########################################
 # %% 1. visualize your results: sPOD frames
 ##########################################
 # the result is a list of the decomposed field.
-# each element of the list contains a frame of the decomposition.
+# each element of the list contains a frame of the decomposition.<
 # If you want to plot the k-th frame use:
 # 1. frame
 k_frame = 0
+plt.figure(num=10)
 plt.subplot(121)
-sPOD_frames[k_frame].plot_field()
+plt.pcolormesh(sPOD_frames[k_frame].build_field())
 plt.suptitle("sPOD Frames")
 plt.xlabel(r'$N_x$')
 plt.ylabel(r'$N_t$')
@@ -71,7 +78,7 @@ plt.title(r"$q^"+str(k_frame)+"(x,t)$")
 # 2. frame
 k_frame = 1
 plt.subplot(122)
-sPOD_frames[k_frame].plot_field()
+plt.pcolormesh(sPOD_frames[k_frame].build_field())
 plt.xlabel(r'$N_x$')
 plt.ylabel(r'$N_t$')
 plt.title(r"$q^"+str(k_frame)+"(x,t)$")
@@ -82,7 +89,7 @@ plt.title(r"$q^"+str(k_frame)+"(x,t)$")
 # 2. visualize your results: relative error
 ##########################################
 
-plt.figure()
+plt.figure(5)
 plt.semilogy(rel_err)
 plt.title("relative error")
 plt.ylabel(r"$\frac{||X - \tilde{X}_i||_2}{||X||_2}$")
