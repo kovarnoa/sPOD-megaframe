@@ -54,7 +54,7 @@ class frame:
             self.Nmodes = number_of_modes
         # transform the field to reference frame
         if not np.all(field == None):
-            field = self.trafo.apply(field)
+            field = self.trafo.reverse(field)
             self.set_orthonormal_system(field)
         #print("We have initialiced a new field!")
     
@@ -173,7 +173,7 @@ def build_all_frames(frames, trafos, ranks = None):
 
     qtilde = 0
     for k, (trafo, frame) in enumerate(zip(trafos, frames)):
-            qtilde += trafo.reverse(frame.build_field(ranks[k]))
+            qtilde += trafo.apply(frame.build_field(ranks[k]))
 
     return qtilde
 
@@ -245,46 +245,6 @@ def SVT(X, mu, nmodes_max = None, use_rSVD = False):
     s = shrink(s, mu)
     return (u, s, vt)
 
-###############################################################################
-# least square minimization
-###############################################################################
-
-def minimize(Xtilde_frames, X):
-    ######################################################
-    # build coef matrix X_coef_mat of eq. (9) in Reiss2017
-    ######################################################
-    X_coef = []        # lab frame
-    X_coef_shift = []  # co-moving frame
-    # loop through all moving frames
-    for k, frame in enumerate(Xtilde_frames):
-        # left singular vectors
-        U = frame.modal_system["U"]
-        # right singular vectors
-        VT = frame.modal_system["VT"]
-        # singular values
-        Nmodes = frame.Nmodes
-        # loop over all the modes
-        # each mode represents one alpha_k and one column of the matrix X
-        for i in range(Nmodes):
-            Xmode_shift = np.outer(U[:, i], VT[i, :])
-            Xmode = frame.inv_shift(Xmode_shift)
-
-            X_coef_shift.append(reshape(Xmode_shift, [-1]))
-            X_coef.append(reshape(Xmode, [-1]))
-    ######################################################
-    # solve the minimization problem
-    ######################################################
-    # first we convert the list of vectors (reshaped matrices) to an array.
-    # We have to transpose it since  the function asarray
-    # concatenates the list vectors verticaly
-    X_coef = asarray(X_coef).T
-    X_coef_shift = asarray(X_coef_shift).T
-    X_ref = reshape(X.copy(), [-1, 1])
-    # X_coef * alpha = X
-    alpha = lstsq(X_coef, X_ref)[0]
-    alpha = asarray(alpha)
-
-    return alpha, X_coef_shift
 
 
 ###############################################################################
@@ -312,13 +272,27 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
 
 # %%
 ###############################################################################
-# sPOD algorithm
+# sPOD algorithms
 ###############################################################################
+##############################
+# CLASS of return values
+##############################
+class ReturnValue:
+    """
+    This class inherits all return values of the shifted POD routines
+    """
+    def __init__(self, frames, approximation, relaltive_error_hist = None, error_matrix = None):
+     self.frames = frames               # list of all frames
+     self.data_approx = approximation   # approximation of the snapshot data
+     if relaltive_error_hist is not None:
+        self.rel_err_hist = relaltive_error_hist
+     if error_matrix is not None:
+        self.error_matrix = error_matrix
 
 ###############################################################################
 # distribute the residual of frame
 ###############################################################################        
-def sPOD_distribute_residual(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=True, use_rSVD = False):
+def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=True, use_rSVD = False):
     """
     :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
     :param transforms: Transformations
@@ -346,6 +320,7 @@ def sPOD_distribute_residual(snapshot_matrix, transforms, nmodes, eps, Niter=1, 
     norm_q = norm(reshape(q,-1))
     it = 0
     rel_err = 1
+    rel_err_list = []
     while rel_err > eps and it < Niter:
 
         it += 1  # counts the number of iterations in the loop
@@ -355,6 +330,7 @@ def sPOD_distribute_residual(snapshot_matrix, transforms, nmodes, eps, Niter=1, 
         res = q - qtilde
         norm_res = norm(reshape(res,-1))
         rel_err = norm_res/norm_q
+        rel_err_list.append(rel_err)
         qtilde = np.zeros_like(q)
 
         ###########################
@@ -370,7 +346,7 @@ def sPOD_distribute_residual(snapshot_matrix, transforms, nmodes, eps, Niter=1, 
         elapsed = time.time() - t
         print("it=%d rel_err= %4.4e t_cpu = %2.2f" % (it, rel_err, elapsed))
 
-    return qtilde_frames, qtilde
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list)
 
 
 ###############################################################################
@@ -518,7 +494,7 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
         #     qtemp = 0
         #     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
         #         if p != k:
-        #             qtemp += trafo_p.reverse(frame_p.build_field())
+        #             qtemp += trafo_p.apply(frame_p.build_field())
         #     qfield_list.append(qtemp)
 
         for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
@@ -527,7 +503,7 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
                 if p != k:
                     qtemp += trafo_p.apply(frame_p.build_field())
             qk = trafo.reverse(q - qtemp - E + mu_inv * Y)
-            #qk = trafo.apply(q - qfield_list[k] - E + mu_inv * Y)
+            #qk = trafo.reverse(q - qfield_list[k] - E + mu_inv * Y)
             [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, use_rSVD)
             rank = np.sum(S > 0)
             q_frame.modal_system = {"U": U[:,:rank+1], "sigma": S[:rank+1], "VT": VT[:rank+1,:]}
@@ -566,120 +542,10 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
 
     qtilde = 0
     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
-            qtilde += trafo_p.reverse(frame_p.build_field())
+            qtilde += trafo_p.apply(frame_p.build_field())
 
-    return qtilde_frames, qtilde, rel_err_list
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list, E)
 
-
-###############################################################################
-# shift and reduce
-###############################################################################
-def sPOD_shift_and_reduce(X, n_velocities, dx, dt, nmodes=2, eps=1e-4, Niter=5, visualize=True):
-    """
-    First version Shift&Reduce of the
-    shifted POD algorithm published in
-    Reiss2018: https://arxiv.org/abs/1512.01985
-    """
-
-    # Determine shift velocities
-    velocities = shift_velocities(dx, dt, X, n_velocities,
-                                  v_min=-5, v_max=5, v_step=0.01, n_modes=1)
-
-
-    # plot the first component of the original field
-    if visualize:
-        subplot(1, 4, 1)
-        p = pcolor(X[0].T)
-        plt.title(r'$X$')
-        plt.ylabel(r"$N_t$")
-        plt.xlabel(r"$N_x$")
-        plt.pause(0.05)
-        clims = p.get_clim()
-
-    #################################
-    # 1. reset loop variables
-    ################################
-
-    Xtilde = np.zeros(np.shape(X))
-    Xtilde_frames = [frame(v, dx, dt, Xtilde, nmodes) for v in velocities]
-    rel_err = 1
-    it = 0
-    results = {"rel_err": []} # save all the output results in the dict
-    ###########################################################################
-    # MAIN LOOP
-    ###########################################################################
-    # loop until the desired precission is achieved or the maximal number
-    # of iterations
-    while rel_err > eps and it < Niter:
-
-        it += 1  # counts the number of iterations in the loop
-
-        ###############################
-        # 2. calculate residual R
-        ###############################
-        R = X - Xtilde
-        rel_err = norm(R)/norm(X)  # relative error
-        results["rel_err"].append(rel_err)
-        ##########################################
-        print("iter= ", it, "rel err= ", rel_err, "elapsed time=", time.time() - t)
-        ##########################################
-        t = time.time()
-        ###############################
-        # 3. Multi shift and reduce R
-        ###############################
-        R_frames = [frame(v, dx, dt, R, nmodes) for v in velocities]
-
-        if visualize:  # plot the residual
-            subplot(1, len(Xtilde_frames)+2, 2)
-            pcolor(R[0].T)
-            plt.title(r"$R=X-\tilde{X}$")
-            # plt.xlabel(r"$N_x$")
-            plt.pause(0.05)
-
-        #################################
-        # 4. optimize with least squares
-        #################################
-        #######################################################################
-        # a) combine the modes of Xtilde and R
-        # Note 2 objects in the same frame, can be added by concatenating
-        # the SVD left and right singular vectors.
-        #######################################################################
-        # Xtilde_frames = []
-        for k, R_frame in enumerate(R_frames):
-            Xtilde_frames[k] = Xtilde_frames[k].concatenate(R_frame)
-        ###################################################
-        # b) Solve (Xtilde+R) * alpha = X for unknown alpha
-        #  + the classical method (Reiss2018) uses the
-        #    least square approach
-        # TODO Implement the other methods as well
-        # TODO why is it not converging faster???
-        ###################################################
-        [alpha, Xhat_coef] = minimize(Xtilde_frames, X)
-        ######################################################
-        # 5. calculate new modes from optimized coefficients
-        ######################################################
-        update_and_reduce_modes(Xtilde_frames, alpha, Xhat_coef, nmodes)
-        #############################################
-        # 6. update approximation:
-        # Add up all the frames to compute Xtilde
-        #############################################
-        Xtilde *= 0
-        for k, Xframe in enumerate(Xtilde_frames):
-
-            Xtilde += Xframe.inv_shift(Xframe.build_field()[0])
-            # we plot the first 3 frames
-            if visualize and k <= 3:
-                subplot(1, len(Xtilde_frames)+2, k+3)
-                Xframe.plot_field()
-                plt.clim(clims)
-                plt.title(r"$q^"+str(k)+"(x,t)$")
-                # plt.xlabel(r"$N_x$")
-            plt.pause(0.05)
-
-    ###########################################################################
-    # End of MAIN LOOP
-    ###########################################################################
-    return Xtilde_frames, results.get('rel_err')
 
 
 

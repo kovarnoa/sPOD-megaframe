@@ -14,14 +14,15 @@ sys.path.append('./../lib')
 import numpy as np
 from numpy import exp, mod,meshgrid
 import matplotlib.pyplot as plt
-from sPOD_tools import shifted_rPCA
+from sPOD_tools import shifted_rPCA, shifted_POD
 from transforms import transforms
 ###############################################################################
 
 ##########################################
 #%% Define your DATA:
 ##########################################
-#plt.close("all")
+plt.close("all")
+method = "shifted_POD"
 Nx = 400  # number of grid points in x
 Nt = 200  # numer of time intervalls
 
@@ -45,8 +46,8 @@ fun = lambda x, t:  exp(-(mod((x-c*t), L)-0.1)**2/sigma**2) + \
 # a flow quantity and the second element could be the velocity in 1D
 density = fun(X, T)
 velocity = fun(X, T)
-shifts1 = np.asarray([c*t])
-shifts2 = np.asarray([-c*t])
+shifts1 = np.asarray([-c*t])
+shifts2 = np.asarray([c*t])
 fields = [density]  #, velocity]
 
 #######################################
@@ -58,8 +59,11 @@ trafos = [transforms(data_shape ,[L], shifts = shifts1, dx = [dx] , use_scipy_tr
 
 qmat = np.reshape(fields,[Nx,Nt])
 mu = Nx * Nt / (4 * np.sum(np.abs(qmat)))*0.01
-sPOD_frames, qtilde, rel_err = shifted_rPCA(qmat, trafos, nmodes_max = np.max(nmodes)+10, eps=1e-16, Niter=500, use_rSVD=True, mu = mu)
-
+if method == "shifted_rPCA":
+    ret = shifted_rPCA(qmat, trafos, nmodes_max = np.max(nmodes)+10, eps=1e-16, Niter=300, use_rSVD=True, mu = mu)
+else:
+    ret = shifted_POD(qmat, trafos, nmodes, eps=1e-16, Niter=300)
+sPOD_frames, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
 ###########################################
 # %% 1. visualize your results: sPOD frames
 ##########################################

@@ -17,7 +17,7 @@ import numpy as np
 from numpy import exp, mod, meshgrid, pi, sin, size, cos
 from numpy.linalg import norm
 import matplotlib.pyplot as plt
-from sPOD_tools import frame, sPOD_distribute_residual, shifted_rPCA, build_all_frames
+from sPOD_tools import frame, shifted_POD, shifted_rPCA, build_all_frames
 from transforms import transforms
 from plot_utils import show_animation
 from farge_colormaps import farge_colormap_multi
@@ -48,7 +48,8 @@ dt = time[1]-time[0]
 c = dx/dt
 [Y,X] = meshgrid(y,x)
 saw = lambda x: x - np.floor(x)
-fun = lambda t: saw(t/2/pi)
+#fun = lambda t: saw(t/2/pi)
+fun = lambda t: sin(t)
 #fun_n = lambda t: fun(t/2/pi*np.prod(Nr_of_bumbs))*np.heaviside()
 b = lambda r: np.where(np.abs(r) < 1, np.exp(-1 / (1 - r ** 2)), 0)
 #CoefList = [np.random.rand()) for n in range(20)];
@@ -81,12 +82,12 @@ for it,t in enumerate(time):
     shift3[1,it] = 0
 
     for k in range(np.prod(Nr_of_bumbs)):
-        delta_x = center1[0] + x0_list[k][0] + shift1[0,it]
-        delta_y = center1[1] + x0_list[k][1] + shift1[1,it]
+        delta_x = center1[0] + x0_list[k][0] - shift1[0,it]
+        delta_y = center1[1] + x0_list[k][1] - shift1[1,it]
         q1[..., 0, it] += At*fun(t / T * 2 * pi * k) * b(np.sqrt((X - delta_x)**2 +( Y - delta_y)**2)) * exp(-k/5)
     for k in range(4):
-        delta_x = center2[0] + x0_list[k][0] + shift2[0, it]
-        delta_y = center2[1] + x0_list[k][1] + shift2[1, it]
+        delta_x = center2[0] + x0_list[k][0] - shift2[0, it]
+        delta_y = center2[1] + x0_list[k][1] - shift2[1, it]
         q2[..., 0, it] += At*sin(t / T * 2 * pi * (k+1)) * b(np.sqrt((X - delta_x) ** 2 + (Y - delta_y) ** 2)) * exp(-k)
 
 q = q1 + q2
@@ -101,9 +102,9 @@ shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy] , use_sci
 shift_trafo_3 = transforms(data_shape,L, trafo_type="identity", shifts = shift3, dx = [dx,dy] )
 
 
-qshift1 = shift_trafo_1.apply(q1)
-qshift2 = shift_trafo_2.apply(q2)
-qshiftreverse = shift_trafo_2.reverse(shift_trafo_2.apply(q))
+qshift1 = shift_trafo_1.reverse(q1)
+qshift2 = shift_trafo_2.reverse(q2)
+qshiftreverse = shift_trafo_2.apply(shift_trafo_2.reverse(q))
 res = q-qshiftreverse
 err = np.linalg.norm(np.reshape(res,-1))/np.linalg.norm(np.reshape(q,-1))
 print("err =  %4.4e "% err)
@@ -128,12 +129,12 @@ plt.show()
     
 # %% Run shifted POD
 tranfos = [shift_trafo_1, shift_trafo_2]
-#qframes, qtilde = sPOD_distribute_residual(np.reshape(q,[-1,Nt]), transforms, nmodes=np.asarray(nmodes), eps=1e-4, Niter=50, visualize=True, use_rSVD=True)
+#ret = shifted_POD(np.reshape(q,[-1,Nt]), transforms, nmodes=np.asarray(nmodes), eps=1e-4, Niter=50, visualize=True, use_rSVD=True)
 qmat = np.reshape(q, [-1, Nt])
 mu0 = np.size(qmat,0) * Nt / (4 * np.sum(np.abs(qmat)))
 lambd0 =  1 / np.sqrt(np.max(Ngrid))
-qframes, qtilde , rel_err_list = shifted_rPCA(qmat, tranfos, nmodes_max = np.prod(Nr_of_bumbs)+10, eps=1e-16, Niter=30, visualize=True, use_rSVD=True, mu = mu0/500, lambd = 5*lambd0)
-
+ret =  shifted_rPCA(qmat, tranfos, nmodes_max = np.prod(Nr_of_bumbs)+10, eps=1e-16, Niter=30, visualize=True, use_rSVD=True, mu = mu0/500, lambd = 2*lambd0)
+qframes, qtilde , rel_err_list = ret.frames, ret.data_approx, ret.rel_err_hist
 # %% Show results
 U, S, VT = np.linalg.svd(np.reshape(q,[-1,Nt]),full_matrices=False)
 U, S1, VT = np.linalg.svd(np.reshape(q1,[-1,Nt]),full_matrices=False)
@@ -160,7 +161,7 @@ plt.plot(time, sin(time / T * 2 * pi * (nmode+1))*At,'-', label = r"exact $q^1$ 
 plt.plot(time, qframes[0].modal_system["VT"][nmode,:],'o', label = r"sPOD $q^1$")
 
 U1f = qframes[0].modal_system["U"]
-qshift1 = shift_trafo_1.apply(q)
+qshift1 = shift_trafo_1.reverse(q)
 V1f = U1f.T@np.reshape(qshift1,[-1,Nt])
 plt.plot(time, V1f[nmode,:]/np.sqrt(np.sum(V1f[nmode,:]**2)),'<',label=r"$\langle T^{-1}q,\phi_k^k(x)\rangle$" )
 plt.legend()
@@ -172,7 +173,7 @@ plt.semilogy(1-np.cumsum(S)/np.sum(S), '--*', label = r"SVD $q$ ")
 qnorm = norm(qtilde,ord="fro")
 rel_err_list = []
 DoF_list = []
-for r in range(1,np.max(nmodes)+5):
+for r in range(1,np.max(nmodes)+10):
     qtilde = build_all_frames(qframes, tranfos, ranks=r)
     rel_err = norm(qmat-qtilde,ord="fro")/qnorm
     rel_err_list.append(rel_err)
@@ -182,4 +183,5 @@ plt.semilogy(DoF_list,rel_err_list, 'o', label = r"sPOD")
 plt.legend()
 plt.xlabel(r"$r$ DoFs")
 plt.ylabel(r"rel err")
+
 

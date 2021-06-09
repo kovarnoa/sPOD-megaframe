@@ -16,7 +16,7 @@ sys.path.append('../lib')
 import numpy as np
 from numpy import exp, mod,meshgrid,pi,sin,size
 import matplotlib.pyplot as plt
-from sPOD_tools import frame, sPOD_distribute_residual,shifted_rPCA
+from sPOD_tools import frame, shifted_POD,shifted_rPCA
 from transforms import transforms
 from farge_colormaps import farge_colormap_multi
 ###############################################################################
@@ -57,18 +57,20 @@ center1 = (0.2*L[0],0.5*L[1])
 center2 = (0.5*L[0],0.5*L[1])
 
 for it,t in enumerate(time):
+
+
     
-    x1,y1 = (center1[0], 0.3*L[1]*sin(t) + center1[1])
-    x2,y2 = (center2[0]-0.3*L[1]*sin(t), - 0.3*L[1]*sin(t) + center2[1])
+    shift1[0,it] = 0
+    shift1[1,it] = 0.3*L[1]*sin(t)
     
+    shift2[0,it] = -0.3*L[0]*sin(t)
+    shift2[1,it] = - 0.3*L[1]*sin(t)
+
+    x1,y1 = (center1[0] - shift1[0,it],  center1[1] - shift1[1,it])
+    x2,y2 = (center2[0] - shift2[0,it],  center2[1] - shift2[1,it])
+
     phi1 = np.sqrt((X-x1)**2 + (Y-y1)**2) - R
     phi2 = np.sqrt((X-x2)**2 + (Y-y2)**2) - R
-    
-    shift1[0,it] = x1-center1[0]
-    shift1[1,it] = y1-center1[1]
-    
-    shift2[0,it] = x2-center2[0]
-    shift2[1,it] = y2-center2[1]
     
     q[...,0,it] = f(phi1,dx*3)*f(phi2,dx*3) 
     #q[...,1,it] = f(phi1,dx)-f(phi2,dx) 
@@ -83,9 +85,9 @@ for it,t in enumerate(time):
 shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy], use_scipy_transform=False )
 shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy], use_scipy_transform=False )
 
-qshift1 = shift_trafo_1.apply(q)
-qshift2 = shift_trafo_2.apply(q)
-qshiftreverse = shift_trafo_2.reverse(shift_trafo_2.apply(q))
+qshift1 = shift_trafo_1.reverse(q)
+qshift2 = shift_trafo_2.reverse(q)
+qshiftreverse = shift_trafo_2.apply(shift_trafo_2.reverse(q))
 res = q-qshiftreverse
 err = np.linalg.norm(np.reshape(res,-1))/np.linalg.norm(np.reshape(q,-1))
 print("err =  %4.4e "% err)
@@ -109,6 +111,10 @@ plt.colorbar()
     
 # %% Run shifted POD
 transforms = [shift_trafo_1, shift_trafo_2]
-#qframes, q = sPOD_distribute_residual(q, transforms, nmodes=2, eps=1e-4, Niter=20, visualize=True)
-qframes, qtilde = shifted_rPCA(np.reshape(q,[-1,Nt]), transforms, eps=1e-4, Niter=50, visualize=True)
+qmat = np.reshape(q,[-1,Nt])
+#qframes, q = shifted_POD(q, transforms, nmodes=2, eps=1e-4, Niter=20, visualize=True)
+mu = np.prod(np.size(qmat)) / (4 * np.sum(np.abs(qmat)))*0.1
+ret = shifted_rPCA(qmat, transforms, eps=1e-4, Niter=50, visualize=True, mu = mu)
+qframes, qtilde = ret.frames, ret.data_approx
+qtilde = np.reshape(qtilde,data_shape)
 plt.pcolormesh(X,Y,q[...,0,10]-qtilde[...,0,10])

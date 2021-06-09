@@ -17,7 +17,7 @@ import numpy as np
 from numpy import exp, mod,meshgrid,pi,sin,size
 import matplotlib.pyplot as plt
 from transforms import transforms
-from sPOD_tools import frame, sPOD_distribute_residual, shifted_rPCA, build_all_frames
+from sPOD_tools import frame, shifted_POD, shifted_rPCA, build_all_frames
 from scipy.io import loadmat
 from numpy.fft import fft2,ifft2
 from farge_colormaps import farge_colormap_multi
@@ -83,9 +83,9 @@ shift2[1,:] = -0.25*np.sin(2*pi*0.001*time) # frame 2, shift in y
 
 shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = dX, use_scipy_transform=False )
 shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = dX, use_scipy_transform=False )
-qshift1 = shift_trafo_1.apply(q)
-qshift2 = shift_trafo_2.apply(q)
-qshiftreverse = shift_trafo_2.reverse(shift_trafo_2.apply(q))
+qshift1 = shift_trafo_1.reverse(q)
+qshift2 = shift_trafo_2.reverse(q)
+qshiftreverse = shift_trafo_2.apply(shift_trafo_2.reverse(q))
 res = q-qshiftreverse
 err = np.linalg.norm(np.reshape(res,-1))/np.linalg.norm(np.reshape(q,-1))
 print("err =  %4.4e "% err)
@@ -97,6 +97,6 @@ plt.colorbar()
 trafos = [shift_trafo_1, shift_trafo_2]
 qmat = np.reshape(q, [-1, Nt])
 
-qframes, qtilde = shifted_rPCA(qmat, trafos, nmodes_max = np.max(nmodes)+10, eps=1e-10, Niter=50, visualize=True, use_rSVD=True)
-
+ret = shifted_rPCA(qmat, trafos, nmodes_max = np.max(nmodes)+10, eps=1e-10, Niter=50, visualize=True, use_rSVD=True)
+qframes, qtilde , rel_err_list = ret.frames, ret.data_approx, ret.rel_err_hist
 plt.pcolormesh(X,Y,q[:,:,0,5]-qtilde[:,:,0,5])

@@ -16,7 +16,7 @@ sys.path.append('../lib')
 import numpy as np
 from numpy import exp, mod,meshgrid,pi,sin,size
 import matplotlib.pyplot as plt
-from sPOD_tools import frame, sPOD_distribute_residual
+from sPOD_tools import frame, shifted_POD
 from transforms import transforms
 from scipy.io import loadmat
 ###############################################################################
@@ -61,9 +61,9 @@ rotation2 = -pi/4 * np.cos(2*pi*freq*time)   # frame 2
 rotation_trafo_1 = transforms(data_shape,L,trafo_type="rotation",dx=[dx,dy],rotations=rotation1,rotation_center=[0*L[0],0*L[1]])
 rotation_trafo_2 = transforms(data_shape,L,trafo_type="rotation",dx=[dx,dy],rotations=rotation2,rotation_center=[0*L[0],0*L[1]])
 rotation_trafo_3 = transforms(data_shape,L,trafo_type="rotation",dx=[dx,dy],rotations=rotation3,rotation_center=[0*L[0],0*L[1]])
-qshift1 = rotation_trafo_1.apply(q)
-qshift2 = rotation_trafo_2.apply(q)
-qshift3 = rotation_trafo_3.apply(q)
+qshift1 = rotation_trafo_1.reverse(q)
+qshift2 = rotation_trafo_2.reverse(q)
+qshift3 = rotation_trafo_3.reverse(q)
 qshiftreverse = rotation_trafo_1.reverse(rotation_trafo_1.apply(q))
 res = q-qshiftreverse
 err = np.linalg.norm(np.reshape(res,-1))/np.linalg.norm(np.reshape(q,-1))
@@ -74,6 +74,6 @@ plt.colorbar()
     
 # %% Run shifted POD
 transforms = [rotation_trafo_1, rotation_trafo_2, rotation_trafo_3]
-qframes, qtilde = sPOD_distribute_residual(q, transforms, nmodes=3, eps=1e-4, Niter=10, visualize=True)
-
+ret = shifted_POD(q, transforms, nmodes=3, eps=1e-4, Niter=10, visualize=True)
+qframes, qtilde , rel_err_list = ret.frames, ret.data_approx, ret.rel_err_hist
 plt.pcolormesh(X,Y,q[:,:,0,5]-qtilde[:,:,0,5])
