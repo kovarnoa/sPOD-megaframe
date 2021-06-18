@@ -304,8 +304,6 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
     """
     assert (np.ndim(snapshot_matrix) == 2), "Are you stephen hawking, trying to solve this problem in 16 dimensions?" \
                              "Please give me a snapshotmatrix with every snapshot in one column"
-    assert (np.size(snapshot_matrix,0) > np.size(snapshot_matrix,1)),\
-        "GRRRRRR this is not right!!! Number of columns should be smaller then ODE dimension."
     if use_rSVD:
         warn("Using rSVD to accelarate decomposition procedure may lead to different results, pls check!")
     #########################
@@ -441,8 +439,6 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     """
     assert (np.ndim(snapshot_matrix) == 2), "Are you stephen hawking, trying to solve this problem in 16 dimensions?" \
                              "Please give me a snapshotmatrix with every snapshot in one column"
-    assert (np.size(snapshot_matrix,0) > np.size(snapshot_matrix,1)),\
-        "GRRRRRR this is not right!!! Number of columns should be smaller then ODE dimension."
     if use_rSVD:
         warn("Using rSVD to accelarate decomposition procedure may lead to different results, pls check!")
     #########################
@@ -450,12 +446,11 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     #########################
     qtilde = np.zeros_like(snapshot_matrix)
     E = np.zeros_like(snapshot_matrix)
-    Y = np.zeros_like(snapshot_matrix)
     Nframes = len(transforms)
 
     # make a list of the number of maximal ranks in each frame
     if not np.all(nmodes_max): # check if array is None, if so set nmodes_max onto N
-        nmodes_max = np.size(snapshot_matrix,1)
+        nmodes_max = np.max(np.shape(snapshot_matrix))
     if np.size(nmodes_max) != Nframes:
             nmodes = list([nmodes_max]) * Nframes
     else:
@@ -464,7 +459,8 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     qtilde_frames = [frame(trafo, qtilde, number_of_modes=nmodes[k]) for k,trafo in enumerate(transforms)]
 
     q = snapshot_matrix.copy()
-    Y = 0*q
+    #Y = q.copy()
+    Y = np.zeros_like(snapshot_matrix)
     norm_q = norm(reshape(q, -1))
     it = 0
     M, N = np.shape(q)
@@ -506,7 +502,7 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
             #qk = trafo.reverse(q - qfield_list[k] - E + mu_inv * Y)
             [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, use_rSVD)
             rank = np.sum(S > 0)
-            q_frame.modal_system = {"U": U[:,:rank+1], "sigma": S[:rank+1], "VT": VT[:rank+1,:]}
+            q_frame.modal_system = {"U": U[:,:rank], "sigma": S[:rank], "VT": VT[:rank,:]}
             ranks.append(rank) # list of ranks for each frame
             qtilde += trafo.apply(q_frame.build_field())
         ###########################
@@ -543,6 +539,8 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     qtilde = 0
     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
             qtilde += trafo_p.apply(frame_p.build_field())
+            S =frame_p.modal_system["sigma"]
+            frame_p.Nmodes = np.sum(S > 0)
 
     return ReturnValue(qtilde_frames, qtilde, rel_err_list, E)
 
