@@ -71,11 +71,13 @@ class transforms:
                     self.shift = self.shift1
             if trafo_type=="rotation":
                 assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
-                assert(np.sum(rotation_center)==0), "rotation center should be in the middle!"
+                #assert(np.sum(rotation_center)==0), "rotation center should be in the middle!"
                 self.rotations = rotations # is an array with [omega(t_1), ... omega(t_Ntime)] rotation angles at different timepoints
                 self.rotation_center = rotation_center # array including center of rotation(x_0, y_0)
             if trafo_type=="shiftRot":
                 assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
+                self.shifts_pos, self.shifts_neg = self.init_shifts_2D(dx, domain_size, self.Ngrid, shifts, Nvar= self.Nvar)
+
                 self.shifts    = shifts    # dim x Ntime shiftarray (one element for one time instance)
                 self.rotations = rotations
                 self.rotation_center = rotation_center
@@ -102,7 +104,7 @@ class transforms:
             ftrans = self.rotate(field, self.rotations)
         elif self.trafo_type == "shiftRot":
             # ~ auxField = self.shift(field,self.shiftMatrices_pos)         #shift to origin
-            auxField = self.shift2(field,self.shifts)                   #shift to origin
+            auxField = self.shift1(field,self.shifts_pos)                   #shift to origin
             ftrans = self.rotate(auxField,self.rotations)                 #rotate and return
         elif self.trafo_type == "identity":
             ftrans = field
@@ -131,7 +133,7 @@ class transforms:
         elif self.trafo_type == "shiftRot":
             auxField = self.rotate(field,-self.rotations)               #rotate back
             # ~ return self.shift(auxField,self.shiftMatrices_neg)          #shift back and return
-            ftrans = self.shift(auxField,-self.shifts)                   #shift back and return
+            ftrans = self.shift1(auxField,self.shifts_neg)                   #shift back and return
         elif self.trafo_type == "identity":
             ftrans = field
         else:
