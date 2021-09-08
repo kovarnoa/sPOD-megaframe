@@ -187,7 +187,7 @@ class transforms:
         for it in range(Ntime):
             DeltaS = -np.divide(shifts[:,it],self.dx)
             q = np.reshape(field[...,it], self.Ngrid)
-            field_shift[...,it] = ndimage.shift(q,DeltaS,mode='wrap',order=2)
+            field_shift[...,it] = ndimage.shift(q,DeltaS,mode='nearest')
         return np.reshape(field_shift,input_shape)
     # Note (MI): the shifts need to be scaled w.r.t the image and are
     #            reversed 

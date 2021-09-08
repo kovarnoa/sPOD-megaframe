@@ -532,8 +532,8 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
         elapsed = time.time() - t
-        print("it=%d rel_err= %4.4e norm(dres) = %4.1e norm(E) = %4.1e tcpu = %2.2f, ranks_frame = " % (
-        it, rel_err, mu*norm_dres/norm_q, norm(reshape(E, -1)), elapsed), *ranks)
+        print("it=%d rel_err= %4.4e norm(dres) = %4.1e norm(E)/norm(q) = %4.1e tcpu = %2.2f, ranks_frame = " % (
+        it, rel_err, mu*norm_dres/norm_q, norm(reshape(E, -1))/norm_q, elapsed), *ranks)
 
 
     qtilde = 0
