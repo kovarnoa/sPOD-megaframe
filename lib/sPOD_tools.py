@@ -18,8 +18,8 @@ import matplotlib.pyplot as plt
 from numpy import exp, meshgrid, mod,size, interp, where, diag, reshape, \
                     asarray
 from sklearn.utils.extmath import randomized_svd
-from numpy.linalg import lstsq, norm
-from scipy.linalg import svd
+from numpy.linalg import lstsq, norm, svd
+#from scipy.linalg import svd
 import time
 from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
                                 xlabel, ylabel, figure
@@ -49,10 +49,11 @@ class frame:
         self.Ntime = data_shape[3]
         self.trafo = transform
         self.dim = self.trafo.dim
-        if not number_of_modes:
-            self.Nmodes = self.Ntime
-        else:
-            self.Nmodes = number_of_modes
+        #if not number_of_modes:
+         #   self.Nmodes = self.Ntime
+        #else:
+        #    self.Nmodes = number_of_modes
+        self.Nmodes = number_of_modes
         # transform the field to reference frame
         if not np.all(field == None):
             field = self.trafo.reverse(field)
@@ -237,12 +238,12 @@ def SVT(X, mu, nmodes_max = None, use_rSVD = False):
         if use_rSVD:
             u, s, vt = randomized_svd(X, n_components=nmodes_max)
         else:
-            u, s, vt = np.linalg.svd(X, full_matrices=False)
+            u, s, vt = svd(X, full_matrices=False)
             s = s[:nmodes_max]
             u = u[:, :nmodes_max]
             vt = vt[:nmodes_max, :]
     else:
-        u, s, vt = np.linalg.svd(X, full_matrices=False)
+        u, s, vt = svd(X, full_matrices=False)
     s = shrink(s, mu)
     return (u, s, vt)
 
@@ -303,6 +304,7 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
     :param visualize: if true: show intermediet results
     :return:
     """
+
     assert (np.ndim(snapshot_matrix) == 2), "Are you stephen hawking, trying to solve this problem in 16 dimensions?" \
                              "Please give me a snapshotmatrix with every snapshot in one column"
     if use_rSVD:
@@ -310,13 +312,25 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
     #########################
     ## 1.Step: Initialize
     #########################
-    q = snapshot_matrix.copy()
+    q = snapshot_matrix
     qtilde = np.zeros_like(q)
     Nframes = len(transforms)
     if np.size(nmodes) != Nframes:
         nmodes = list([nmodes]) * Nframes
     qtilde_frames = [frame(trafo, qtilde, number_of_modes=nmodes[k]) for k,trafo in enumerate(transforms)]
     norm_q = norm(reshape(q,-1))
+
+    ###########################
+    # error of svd:
+    r_ = np.sum(nmodes)
+    [U, S, VT] = np.linalg.svd(q, full_matrices=False)
+    s = S[:r_]
+    u = U[:, :r_]
+    vt = VT[:r_, :]
+    err_svd = np.linalg.norm(q - np.dot(u * s, vt)) / norm_q
+    print("rel-error using svd with %d modes:%4.4e"%(r_,err_svd))
+    ###########################
+
     it = 0
     rel_err = 1
     rel_err_list = []
