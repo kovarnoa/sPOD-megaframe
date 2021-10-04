@@ -31,58 +31,49 @@ cm = farge_colormap_multi()
 ##########################################
 plt.close("all")
 dir = "/home/phil/develop/two_cylinders/"
-data = loadmat(dir+'ux.mat')
-ux = data['data']
-data= loadmat(dir+'uy.mat')
-uy = data['data']
+data = loadmat(dir+'vorx_19.mat')
+data = data['data']
 
 
+Nt = data.shape[1]                      # Number of time intervalls
+Nvar = 1# data.shape[0]                    # Number of variables
+nmodes = 3                              # reduction of singular values
+frac = 2
 
-Ngrid = [ux.shape[2], ux.shape[3]]  # number of grid points in x
-Nt = ux.shape[1]                      # Number of time intervalls
-Nvar = 2                # Number of variables
-nmodes = 1                              # reduction of singular values
-
+Ngrid = [data.shape[2]//frac, data.shape[3]//frac]  # number of grid points in x
 data_shape = [*Ngrid,Nvar,Nt]
-
-#data = np.zeros(data_shape)
-#for tau in range(0,Nt):
-#    data[0,tau,:,:] = curl(np.squeeze(ux[0,tau,:,:]),np.squeeze(uy[0,tau,:,:]))
-
                # size of time intervall
-T = 1000.                # total time
+freq    = 0.01
+T       = 100       # total time
 L = np.asarray([1, 1])   # total domain size
 x,y = (np.linspace(0, L[i], Ngrid[i]) for i in range(2))
 time = np.linspace(0, T, Nt)
 dX = (x[1]-x[0],y[1]-y[0])
 dt = time[1]-time[0]
 [Y,X] = meshgrid(y,x)
-dim = 2
-#
-# K = [np.fft.fftfreq(Ngrid[k], d=dX[k]) for k in range(dim)]
-# [kx, ky] = meshgrid(K[0], K[1])
-# uxhat = fft2(ux)
-# uyhat = fft2(uy)
-# dux_dy = np.real(ifft2(ky * uxhat * (1j)))
-# duy_dx = np.real(ifft2(kx * uyhat * (1j)))
-# vort = duy_dx - dux_dy
 
 q = np.zeros(data_shape)
-ux=np.transpose(ux,[2,3,0,1])
-uy=np.transpose(uy,[2,3,0,1])
-q[:,:,0,:] = np.squeeze(ux)
-q[:,:,1,:] = np.squeeze(uy)
+#for nvar in range(Nvar):
+for it,t in enumerate(time):
+    q[:,:,0,it] = np.array(data[0,it,::frac,::frac]).T
+
+# %%data = np.zeros(data_shape)
+#for tau in range(0,Nt):
+#    data[0,tau,:,:] = curl(np.squeeze(ux[0,tau,:,:]),np.squeeze(uy[0,tau,:,:]))
+
+               # size of time intervall
+
 shift1 = np.zeros([2,Nt])
 shift2 = np.zeros([2,Nt])
 shift1[0,:] = 0 * time                      # frame 1, shift in x
 shift1[1,:] = 0 * time                      # frame 1, shift in y
 shift2[0,:] = 0 * time                      # frame 2, shift in x
-shift2[1,:] = -0.25*np.sin(2*pi*0.001*time) # frame 2, shift in y
+shift2[1,:] = -0.25*np.sin(2*pi*freq*time) # frame 2, shift in y
 
 # %% Create Trafo
 
-shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = dX, use_scipy_transform=False )
-shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = dX, use_scipy_transform=False )
+shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = dX, use_scipy_transform=True )
+shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = dX, use_scipy_transform=True )
 qshift1 = shift_trafo_1.reverse(q)
 qshift2 = shift_trafo_2.reverse(q)
 qshiftreverse = shift_trafo_2.apply(shift_trafo_2.reverse(q))

@@ -18,7 +18,8 @@ import matplotlib.pyplot as plt
 from numpy import exp, meshgrid, mod,size, interp, where, diag, reshape, \
                     asarray
 from sklearn.utils.extmath import randomized_svd
-from numpy.linalg import svd, lstsq, norm
+from numpy.linalg import lstsq, norm
+from scipy.linalg import svd
 import time
 from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
                                 xlabel, ylabel, figure
