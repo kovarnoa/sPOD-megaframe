@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+
 """
 Created on Fri Nov 30 09:11:12 2018
 
@@ -22,7 +23,7 @@ from transforms import transforms
 #%% Define your DATA:
 ##########################################
 plt.close("all")
-method = "shifted_POD"
+method = "shifted_rPCA"
 Nx = 400  # number of grid points in x
 Nt = 200  # numer of time intervalls
 
@@ -98,3 +99,4 @@ plt.semilogy(rel_err)
 plt.title("relative error")
 plt.ylabel(r"$\frac{||X - \tilde{X}_i||_2}{||X||_2}$")
 plt.xlabel(r"$i$")
+plt.show()

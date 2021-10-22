@@ -1,11 +1,12 @@
 name: sPOD
 channels:
-  - conda-forge
   - defaults
   - anaconda
+  - conda-forge
 dependencies:
+  - numpy
   - matplotlib
   - scipy
   - notebook
   - scikit-learn
-
+  - tikzplotlib

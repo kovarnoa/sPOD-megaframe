@@ -283,13 +283,15 @@ class ReturnValue:
     """
     This class inherits all return values of the shifted POD routines
     """
-    def __init__(self, frames, approximation, relaltive_error_hist = None, error_matrix = None):
+    def __init__(self, frames, approximation, relaltive_error_hist = None, error_matrix = None, ranks = None):
      self.frames = frames               # list of all frames
      self.data_approx = approximation   # approximation of the snapshot data
      if relaltive_error_hist is not None:
         self.rel_err_hist = relaltive_error_hist
      if error_matrix is not None:
         self.error_matrix = error_matrix
+     if ranks is not None:
+         self.ranks = ranks
 
 ###############################################################################
 # distribute the residual of frame
@@ -469,7 +471,7 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     if np.size(nmodes_max) != Nframes:
             nmodes = list([nmodes_max]) * Nframes
     else:
-            nmodes = nmodes_max
+            nmodes = [nmodes_max]
 
     qtilde_frames = [frame(trafo, qtilde, number_of_modes=nmodes[k]) for k,trafo in enumerate(transforms)]
 
@@ -557,7 +559,7 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
             S =frame_p.modal_system["sigma"]
             frame_p.Nmodes = np.sum(S > 0)
 
-    return ReturnValue(qtilde_frames, qtilde, rel_err_list, E)
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list, E, ranks)
 
 
 

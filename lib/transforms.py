@@ -67,6 +67,9 @@ class transforms:
                 if use_scipy_transform:
                     self.shift = self.shift_scipy
                     self.shifts_pos =  shifts    # dim x Ntime shiftarray (one element for one time instance)
+                    one = np.ones_like(shifts)
+                    one[0,:]=dx[0]
+                    one[1,:]=0#dx[1]
                     self.shifts_neg = -shifts  # dim x Ntime shiftarray (one element for one time instance)
                 else: # own implementation for shifts: is much faster then ndimage
                     self.shifts_pos, self.shifts_neg = self.init_shifts_2D(dx, domain_size, self.Ngrid, shifts, Nvar= self.Nvar)
@@ -186,7 +189,7 @@ class transforms:
         field_shift = np.zeros([*self.Ngrid,Ntime])
         for it in range(Ntime):
 
-            DeltaS = -np.round(np.divide(shifts[:, it], self.dx))
+            #DeltaS = -np.round(np.divide(shifts[:, it], self.dx))
             DeltaS = -np.divide(shifts[:, it], self.dx)
             q = np.reshape(field[...,it], self.Ngrid)
             #field_shift[...,it] = np.roll(q, int(DeltaS[1]), axis=1)

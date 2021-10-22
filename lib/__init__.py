@@ -8,4 +8,4 @@
 from .sPOD_tools import *
 from .transforms import *
 from .farge_colormaps import *
-
+from .utils import *

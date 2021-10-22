@@ -14,6 +14,7 @@ plt.close("all")
 
 def show_animation(q, Xgrid=None, cycles=1, frequency = 1, figure_number = None, cmap = fc, vmin = None,vmax=None, save_path=None):
 
+
     ndim = np.size(Xgrid)
     ntime = q.shape[-1]
     if figure_number == None:
