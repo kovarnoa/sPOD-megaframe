@@ -13,6 +13,8 @@ This package provides all the infrastructure for the
 ############################
 # import MODULES here:
 ############################
+import pickle
+
 import numpy as np
 import matplotlib.pyplot as plt
 from numpy import exp, meshgrid, mod,size, interp, where, diag, reshape, \
@@ -20,6 +22,7 @@ from numpy import exp, meshgrid, mod,size, interp, where, diag, reshape, \
 from sklearn.utils.extmath import randomized_svd
 from numpy.linalg import lstsq, norm, svd
 #from scipy.linalg import svd
+import os
 import time
 from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
                                 xlabel, ylabel, figure
@@ -39,27 +42,39 @@ class frame:
         The frame is represented by an orthogonal system.
     """
 
-    def __init__(self, transform, field=None, number_of_modes=None):
+    def __init__(self, transform=None, field=None, number_of_modes=None, fname = None):
         """
         Initialize a co moving frame.
         """
-        data_shape = transform.data_shape
-        self.data_shape = data_shape
-        self.Ngrid = np.prod(data_shape[:3])
-        self.Ntime = data_shape[3]
-        self.trafo = transform
-        self.dim = self.trafo.dim
-        #if not number_of_modes:
-         #   self.Nmodes = self.Ntime
-        #else:
-        #    self.Nmodes = number_of_modes
-        self.Nmodes = number_of_modes
-        # transform the field to reference frame
-        if not np.all(field == None):
-            field = self.trafo.reverse(field)
-            self.set_orthonormal_system(field)
-        #print("We have initialiced a new field!")
-    
+        if fname:
+            self.load(fname)
+        else:
+            data_shape = transform.data_shape
+            self.data_shape = data_shape
+            self.Ngrid = np.prod(data_shape[:3])
+            self.Ntime = data_shape[3]
+            self.trafo = transform
+            self.dim = self.trafo.dim
+            #if not number_of_modes:
+             #   self.Nmodes = self.Ntime
+            #else:
+            #    self.Nmodes = number_of_modes
+            self.Nmodes = number_of_modes
+            # transform the field to reference frame
+            if not np.all(field == None):
+                field = self.trafo.reverse(field)
+                self.set_orthonormal_system(field)
+            #print("We have initialiced a new field!")
+
+    def save(self, fname):
+        with open(fname, 'wb') as f:
+            pickle.dump(self, f, pickle.HIGHEST_PROTOCOL)
+
+    def load(self, fname):
+        with open(fname, 'rb') as f:
+            frame_load = pickle.load(f)
+        self.__init__(frame_load.trafo)
+        self.modal_system = frame_load.modal_system
 
 
     def reduce(self, field, r, use_rSVD = False):
@@ -325,10 +340,13 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
     ###########################
     # error of svd:
     r_ = np.sum(nmodes)
-    [U, S, VT] = np.linalg.svd(q, full_matrices=False)
-    s = S[:r_]
-    u = U[:, :r_]
-    vt = VT[:r_, :]
+    if use_rSVD == True:
+        u, s, vt = randomized_svd(q, n_components=r_)
+    else:
+        [U, S, VT] = svd(q, full_matrices=False)
+        s = S[:r_]
+        u = U[:, :r_]
+        vt = VT[:r_, :]
     err_svd = np.linalg.norm(q - np.dot(u * s, vt)) / norm_q
     print("rel-error using svd with %d modes:%4.4e"%(r_,err_svd))
     ###########################
@@ -418,7 +436,7 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
 #             q_frame.modal_system = {"U": U[:,:rank], "sigma": S[:rank], "VT": VT[:rank,:]}
 #             # q_frame += R_frame.build_field()/Nframes
 #             qtilde += trafo.reverse(q_frame.build_field())
-#             ranks.append(rank) # list of ranks for each frame
+#    sav         ranks.append(rank) # list of ranks for each frame
 #         ###########################
 #         # 4. Step: update noice term
 #         ##########################
@@ -472,7 +490,6 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
             nmodes = list([nmodes_max]) * Nframes
     else:
             nmodes = [nmodes_max]
-
     qtilde_frames = [frame(trafo, qtilde, number_of_modes=nmodes[k]) for k,trafo in enumerate(transforms)]
 
     q = snapshot_matrix.copy()
@@ -562,6 +579,28 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     return ReturnValue(qtilde_frames, qtilde, rel_err_list, E, ranks)
 
 
+
+def save_frames(fname, frames,  error_matrix= None):
+
+    fname_base, old_ext = os.path.splitext(fname)
+    ext = ".pkl"
+    for k,frame in enumerate(frames):
+        fname_frame = fname_base + "_%.2d"%k + ext
+        print("frame %2d saved to: "%k, fname_frame)
+        frame.save(fname_frame)
+
+
+def load_frames(fname, Nframes):
+    fname_base, old_ext = os.path.splitext(fname)
+    ext = ".pkl"
+    frame_list = []
+    for k in range(Nframes):
+        fname_frame = fname_base + "_%.2d" % k + ext
+        print("frame %2d loaded: " % k, fname_frame)
+        newframe= frame(fname = fname_frame)
+        frame_list.append(newframe)
+
+    return frame_list
 
 
 
