@@ -221,12 +221,21 @@ class transforms:
         Nx, Ny = Ngrid
         Lx, Ly = domain_size
         dx, dy = dX
+        Nt = np.size(shifts,-1)
+
+        if np.ndim(shifts) ==2:
+            shiftx_pos = np.zeros([Ny,Nt])
+            shifty_pos = np.zeros([Nx, Nt])
+            for it in range(Nt):
+                shiftx_pos[:, it] = shifts[0, it]
+                shifty_pos[:, it] = shifts[1, it]
+        else:
+            shiftx_pos = shifts[0,...]
+            shifty_pos = shifts[1,...]
+
         
-        shiftx_pos = shifts[0,:]
-        shifty_pos = shifts[1,:]
-        
-        shiftx_pos_mat_list=self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx)
-        shifty_pos_mat_list=self.compute_shift_matrix(shifty_pos, Ly, dy, Ny)
+        shiftx_pos_mat_list=self.compute_general_shift_matrix(shiftx_pos, Lx, dx, Nx)
+        shifty_pos_mat_list=self.compute_general_shift_matrix(shifty_pos, Ly, dy, Ny)
         
         # kron for each time slice
         for shiftx,shifty in zip(shiftx_pos_mat_list,shifty_pos_mat_list):
@@ -235,10 +244,10 @@ class transforms:
         ### implement neg shift matrix ###
         shift_neg_mat_list = []
         
-        shiftx_neg = -shiftx_pos + dx
-        shifty_neg = -shifty_pos + dy
-        shiftx_neg_mat_list=self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx)
-        shifty_neg_mat_list=self.compute_shift_matrix(shifty_neg, Ly, dy, Ny)
+        shiftx_neg = -shiftx_pos
+        shifty_neg = -shifty_pos
+        shiftx_neg_mat_list=self.compute_general_shift_matrix(shiftx_neg, Lx, dx, Nx)
+        shifty_neg_mat_list=self.compute_general_shift_matrix(shifty_neg, Ly, dy, Ny)
         
         # kron for each time slice
         for shiftx,shifty in zip(shiftx_neg_mat_list,shifty_neg_mat_list):
@@ -312,8 +321,9 @@ class transforms:
             # save all neighbours
             idx_list = np.asarray([idx_0-1, idx_0, idx_0+1, idx_0+2],dtype=np.int32)
             
-            if idx_list[0] < 0 : idx_list[0] += Npoints 
-            if idx_list[3] > Npoints-1 : idx_list[3] -= Npoints
+            if idx_list[0] < 0 : idx_list[0] += Npoints
+            if idx_list[2] > Npoints - 1: idx_list[2] -= Npoints
+            if idx_list[3] > Npoints - 1: idx_list[3] -= Npoints
             # subdiagonals needed if point is on other side of domain
             idx_subdiags_list = idx_list - Npoints
             # compute the distance to the index
@@ -330,7 +340,70 @@ class transforms:
             Mat.append(sparse.diags(diagonals,offsets,shape=[Npoints,Npoints]))
         
         return Mat
-    
+
+    def compute_general_shift_matrix(self, shifts, domain_length, spacing, Npoints):
+        """
+
+        :param shifts: shift(x_i,t_j) assumes an array of size i=0,...,Nx -1 ; j=0,...,Nt
+        :param domain_length:
+        :param spacing:
+        :param Npoints:
+        :return:
+        """
+        from numpy import floor
+
+        Nx, Nt = np.shape(shifts)
+        Mat = []
+        for it in range(Nt):
+            col = []
+            row = []
+            val = []
+            for ix in range(Nx):
+                shift = shifts[ix,it]
+                # we assume periodicity here
+                if shift > domain_length:
+                    shift = shift - domain_length
+                elif shift < 0:
+                    shift = shift + domain_length
+
+                ''' interpolation scheme        lagrange_idx(x)= (x-x_{idx-1})/(x_idx - x_0)+
+                -1      0   x    1       2                    ...+(x-x_{idx+2})/(x_idx - x_{idx+2})
+                 +      +   x    +       +
+               idx_m1  idx_0    idx_1   idx_2
+              =idx_0-1        =idx_0+1
+               '''
+
+                # shift is close to some discrete index:
+                idx_0 = floor(shift / spacing)
+                # save all neighbours
+                idx_list = np.asarray([idx_0 - 1, idx_0, idx_0 + 1, idx_0 + 2], dtype=np.int32) + ix
+
+                # if idx_list[0] < 0: idx_list[0] += Npoints
+                # if idx_list[3] > Npoints - 1: idx_list[3] -= Npoints
+                # if idx_list[2] > Npoints - 1: idx_list[2] -= Npoints
+                # subdiagonals needed if point is on other side of domain
+                idx_subdiags_list = idx_list - Npoints
+                # compute the distance to the index
+                delta_idx = shift / spacing - idx_0
+                # compute the 4 langrage basis elements
+                lagrange_coefs = [lagrange(delta_idx, [-1, 0, 1, 2], j) for j in range(4)]
+                # for the subdiagonals as well
+                lagrange_coefs = lagrange_coefs #+ lagrange_coefs
+
+                # band diagonals for the shift matrix
+
+                offsets = [np.mod(idx, Npoints) for idx in idx_list]
+                print(offsets)
+                col += list(offsets)
+                row += list(ix *np.ones_like(offsets))
+                val += list(lagrange_coefs)
+
+
+            val = np.asarray(val).flatten()
+            Mat.append(sparse.coo_matrix((val,(row,col)), shape=(Nx,Nx)))
+
+        return Mat
+
     # def compute_rotation_matrix(self, rotations, center, domain_length, spacing, Npoints):
     #     """
 

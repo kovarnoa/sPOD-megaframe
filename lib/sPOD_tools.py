@@ -48,6 +48,7 @@ class frame:
         """
         if fname:
             self.load(fname)
+            self.Nmodes = np.sum(self.modal_system["sigma"] > 0)
         else:
             data_shape = transform.data_shape
             self.data_shape = data_shape
@@ -172,7 +173,7 @@ class frame:
 # build frames
 ###############################################################################
 
-def build_all_frames(frames, trafos, ranks = None):
+def build_all_frames(frames, trafos = None, ranks = None):
     """
     Build up the truncated data field from the result of
      the sPOD decomposition
@@ -181,6 +182,8 @@ def build_all_frames(frames, trafos, ranks = None):
     :param ranks: integer number r_k > 0
     :return: q = sum_k T^k q^k where q^k is of rank r_k
     """
+    if trafos is None:
+        trafos = [f.trafo for f in frames]
 
     if ranks is not None:
         if type(ranks) == int:
@@ -519,13 +522,6 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
         # 3. Step: update frames
         ##########################
         t = time.time()
-        # qfield_list = []
-        # for k in range(Nframes):
-        #     qtemp = 0
-        #     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
-        #         if p != k:
-        #             qtemp += trafo_p.apply(frame_p.build_field())
-        #     qfield_list.append(qtemp)
 
         for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
             qtemp = 0
@@ -555,12 +551,6 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
         dres = norm(res,ord='fro') - res_old
         res_old =  norm(res,ord='fro')
         norm_dres = np.abs(dres)
-        # if mu*norm_dres/norm_q<1e-10:
-        #     mu = 1.6*mu
-        #     mu_inv = 1/mu
-        #     print("increasing mu = ", mu)
-
-
 
         norm_res = norm(reshape(res, -1))
         rel_err = norm_res / norm_q
@@ -588,11 +578,15 @@ def save_frames(fname, frames,  error_matrix= None):
         fname_frame = fname_base + "_%.2d"%k + ext
         print("frame %2d saved to: "%k, fname_frame)
         frame.save(fname_frame)
+    if error_matrix is not None:
+        fname_error_matrix = fname_base+"_error_mat.npy"
+        np.save(fname_error_matrix,error_matrix)
 
-
-def load_frames(fname, Nframes):
+def load_frames(fname, Nframes, load_ErrMat = False):
     fname_base, old_ext = os.path.splitext(fname)
     ext = ".pkl"
+
+    # load frames
     frame_list = []
     for k in range(Nframes):
         fname_frame = fname_base + "_%.2d" % k + ext
@@ -600,7 +594,13 @@ def load_frames(fname, Nframes):
         newframe= frame(fname = fname_frame)
         frame_list.append(newframe)
 
-    return frame_list
+    # load sparse error matrix
+    fname_error_matrix = fname_base+"_error_mat.npy"
+    if load_ErrMat and os.path.isfile(fname_error_matrix):
+        E = np.load(fname_error_matrix)
+        return frame_list, E
+    else:
+        return frame_list
 
 
 
