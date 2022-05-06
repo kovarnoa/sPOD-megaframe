@@ -109,3 +109,6 @@ venv.bak/
 
 # pycharm
 .idea/
+
+# folders
+examples/a*
