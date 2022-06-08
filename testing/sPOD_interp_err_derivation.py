@@ -1,0 +1,32 @@
+import sys
+sys.path.append('../lib/')
+
+from sympy import *
+from sympy.plotting import plot
+
+# %%
+x = symbols("x")
+a = symbols("sigma")
+
+#w = (x+1)*(x)*(x-1)*(x-2) # h^4 order
+w = (x)*(x-1)   # h^2 order
+dw = diff(w,x)
+ddw = diff(dw,x)
+
+dRoots = solveset(dw,x)
+
+for xstar in dRoots:
+
+    print("xstar:", xstar, "w(xstar):", simplify(w.subs(x,xstar)), "dw(xstar):", simplify(dw.subs(x, xstar)), "ddw(xstar):",simplify(ddw.subs(x,xstar)))
+
+p1=plot(w,show=False,xlim=[-1,2],ylim=[-1,1])
+p1.show()
+
+
+#%%
+inicond = exp(-x**2/a**2)
+d2inicond =diff(diff(inicond,x),x)
+d4inicond = diff(diff(diff(diff(inicond,x),x),x),x);
+print("inicond: ", simplify(inicond))
+print("d/dx^4 inicond", d4inicond)
+print("d/dx^2 inicond", d2inicond)

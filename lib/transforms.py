@@ -110,8 +110,8 @@ def compute_general_shift_matrix_numba( shifts, domain_size, spacings, Ngrid, Ix
                 delta_idx = shift_x / dx - idx_0
                 delta_idy = shift_y / dy - idy_0
                 # compute the 4 langrage basis elements
-                lagrange_coefs_x =np.array([lagrange_numba(delta_idx, [-1, 0, 1, 2], j) for j in range(4)])
-                lagrange_coefs_y =np.array([lagrange_numba(delta_idy, [-1, 0, 1, 2], j) for j in range(4)])
+                lagrange_coefs_x = np.array([lagrange_numba(delta_idx, [-1, 0, 1, 2], j) for j in range(4)])
+                lagrange_coefs_y = np.array([lagrange_numba(delta_idy, [-1, 0, 1, 2], j) for j in range(4)])
                 lagrange_coefs = np.outer(lagrange_coefs_y, lagrange_coefs_x)
                 lagrange_coefs = lagrange_coefs.reshape((-1,))
                 #
@@ -138,7 +138,7 @@ class transforms:
     """
 
     def __init__(self, data_shape, domain_size, trafo_type="shift", shifts = None, \
-                 dx = None, rotations=None, rotation_center = None, use_scipy_transform = False):
+                 dx = None, rotations=None, rotation_center = None, use_scipy_transform = False, interp_order=3):
         self.Ngrid = data_shape[:2]
         self.Nvar = data_shape[2]
         self.Ntime = data_shape[3]
@@ -146,6 +146,7 @@ class transforms:
         self.domain_size = domain_size
         self.trafo_type = trafo_type
         self.dim = size(dx)
+        self.interp_order = interp_order
         self.dx = dx  # list of lattice spacings
         if self.dim == 1:
             self.shifts_pos, self.shifts_neg = self.init_shifts_1D(dx[0], domain_size[0], self.Ngrid[0], shifts[:], Nvar=self.Nvar)
@@ -366,7 +367,7 @@ class transforms:
         ### implement pos shift matrix ###
         shift_pos_mat_list = []
         shiftx_pos = shifts[:]
-        shiftx_pos_mat_list = self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx)
+        shiftx_pos_mat_list = self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx, order = self.interp_order)
         # kron for each time slice
         for shiftx in shiftx_pos_mat_list:
             shift_pos_mat_list.append(sparse.kron(shiftx, sparse.eye(Nvar)))
@@ -374,7 +375,7 @@ class transforms:
         ### implement neg shift matrix ###
         shift_neg_mat_list = []
         shiftx_neg = -shiftx_pos
-        shiftx_neg_mat_list = self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx)
+        shiftx_neg_mat_list = self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx, order = self.interp_order)
 
         # kron for each time slice
         for shiftx in shiftx_neg_mat_list:
@@ -402,7 +403,7 @@ class transforms:
         
         return rotation_pos_mat_list, rotation_neg_mat_list
         
-    def compute_shift_matrix(self,shift_list, domain_length, spacing, Npoints):
+    def compute_shift_matrix(self,shift_list, domain_length, spacing, Npoints, order=3):
         from numpy import floor
         
         Mat = []
@@ -422,16 +423,29 @@ class transforms:
             # shift is close to some discrete index:
             idx_0 = floor(shift/spacing)
             # save all neighbours
-            idx_list = np.asarray([idx_0 - 1, idx_0, idx_0 + 1, idx_0 + 2], dtype=np.int32)
-            idx_list = np.asarray([np.mod(idx, Npoints) for idx in idx_list])  # assumes periodicity
+            if order == 5:
+                idx_list = np.asarray([idx_0 - 2,idx_0 - 1, idx_0, idx_0 + 1, idx_0 + 2, idx_0 + 3], dtype=np.int32)
+            elif order == 3:
+                idx_list = np.asarray([idx_0 - 1, idx_0, idx_0 + 1, idx_0 + 2], dtype=np.int32)
+            elif order == 1:
+                idx_list = np.asarray([ idx_0, idx_0 + 1], dtype=np.int32)
+            else:
+                assert(False), "please choose correct order for interpolation"
 
+            idx_list = np.asarray([np.mod(idx, Npoints) for idx in idx_list])  # assumes periodicity
             # subdiagonals needed if point is on other side of domain
             idx_subdiags_list = idx_list - Npoints
             # compute the distance to the index
             delta_idx = shift/spacing - idx_0
             # compute the 4 langrage basis elements
-            lagrange_coefs = [lagrange(delta_idx, [-1,0,1,2], j) for j in range(4)]
-
+            if order == 5:
+                lagrange_coefs = [lagrange(delta_idx, [-2,-1, 0, 1, 2, 3], j) for j in range(6)]
+            elif order == 3:
+                lagrange_coefs = [lagrange(delta_idx, [-1,0,1,2], j) for j in range(4)]
+            elif order == 1:
+                lagrange_coefs = [lagrange(delta_idx, [0, 1], j) for j in range(2)]
+            else:
+                assert (False), "please choose correct order for interpolation"
             # for the subdiagonals as well
             lagrange_coefs = lagrange_coefs + lagrange_coefs
             
@@ -442,6 +456,7 @@ class transforms:
             Mat.append(sparse.diags(diagonals,offsets,shape=[Npoints,Npoints]))
         
         return Mat
+
 
     def compute_general_shift_matrix(self, shifts, domain_size, spacings, Ngrid):
         """
