@@ -40,7 +40,9 @@ if init_case == "one-transport":
     dfun = lambda x, shifts, t: -exp(-(mod((x + shifts[0]), L) - 0.1) ** 2 / sigma ** 2)  # + \
     d4fun = lambda x, shifts, t: 12*exp(-(mod((x + shifts[0]), L) - 0.1)**2/sigma**2)/sigma**4 - 48*(mod((x + shifts[0]), L) - 0.1)**2*exp(-(mod((x + shifts[0]), L) - 0.1)**2/sigma**2)/sigma**6 + 16*(mod((x + shifts[0]), L) - 0.1)**4*exp(-(mod((x + shifts[0]), L) - 0.1)**2/sigma**2)/sigma**8
     d2fun = lambda x, shifts, t: -2*exp(-(mod((x + shifts[0]), L) - 0.1)**2/sigma**2)/sigma**2 + 4*(mod((x + shifts[0]), L) - 0.1)**2*exp(-(mod((x + shifts[0]), L) - 0.1)**2/sigma**2)/sigma**4
-
+    d6fun = lambda x, shifts, t: -120 * exp(-(mod((x + shifts[0]), L) - 0.1) ** 2 / sigma ** 2) / sigma ** 6 + 720 * (mod((x + shifts[0]), L) - 0.1) ** 2 * exp(
+        -(mod((x + shifts[0]), L) - 0.1) ** 2 / sigma ** 2) / sigma ** 8 - 480 * (mod((x + shifts[0]), L) - 0.1) ** 4 * exp(-(mod((x + shifts[0]), L) - 0.1) ** 2 / sigma ** 2) / sigma ** 10 + 64 * (mod((x + shifts[0]), L) - 0.1) ** 6 * exp(
+        -(mod((x + shifts[0]), L) - 0.1) ** 2 / sigma ** 2) / sigma ** 12
     # Define your field as a list of fields:
     # For example the first element in the list can be the density of
     # a flow quantity and the second element could be the velocity in 1D
@@ -54,8 +56,9 @@ if init_case == "one-transport":
 ######################################
 # %% CALL THE SPOD algorithm
 ######################################
-err_list = []
-err_list_1st_ord = []
+err_list_5ord = []
+err_list_3ord = []
+err_list_1ord = []
 spacing_list =[]
 for M in np.logspace(1.5,5.1,10,dtype=np.int32):
     x = np.arange(0, M) / M * L
@@ -69,32 +72,41 @@ for M in np.logspace(1.5,5.1,10,dtype=np.int32):
     fields_ref = fun_reference_frame(X, T)
     qmat_ref = np.reshape(fields_ref, [M, Nt])
     data_shape = [M,1,1,Nt]
-    trafos = [transforms(data_shape ,[L], shifts = shifts[0].flatten(), dx = [dx] , use_scipy_transform=False, interp_order=3),
+    trafos_1ord = [
+        transforms(data_shape, [L], shifts=shifts[0].flatten(), dx=[dx], use_scipy_transform=False, interp_order=1),
+        transforms(data_shape, [L], shifts=shifts[1].flatten(), dx=[dx], use_scipy_transform=False, interp_order=1)]
+
+    trafos_3ord = [transforms(data_shape ,[L], shifts = shifts[0].flatten(), dx = [dx] , use_scipy_transform=False, interp_order=3),
                 transforms(data_shape ,[L], shifts = shifts[1].flatten(), dx = [dx] , use_scipy_transform=False, interp_order=3)]
 
-    trafos_1ord = [transforms(data_shape ,[L], shifts = shifts[0].flatten(), dx = [dx] , use_scipy_transform=False, interp_order=5),
+    trafos_5ord = [transforms(data_shape ,[L], shifts = shifts[0].flatten(), dx = [dx] , use_scipy_transform=False, interp_order=5),
                 transforms(data_shape ,[L], shifts = shifts[1].flatten(), dx = [dx] , use_scipy_transform=False, interp_order=5)]
     #plt.pcolormesh(X,T,qmat)
-    err = np.max(np.abs(qmat_ref- trafos[0].reverse(qmat)))#/norm(qmat)
-    err_list.append(err)
-
-    err = np.max(np.abs(qmat_ref - trafos_1ord[0].reverse(qmat)))  # /norm(qmat)
-    err_list_1st_ord.append(err)
+    err = np.max(np.abs(qmat_ref- trafos_1ord[0].reverse(qmat)))#/norm(qmat)
+    err_list_1ord.append(err)
+    err = np.max(np.abs(qmat_ref - trafos_3ord[0].reverse(qmat)))  # /norm(qmat)
+    err_list_3ord.append(err)
+    err = np.max(np.abs(qmat_ref - trafos_5ord[0].reverse(qmat)))  # /norm(qmat)
+    err_list_5ord.append(err)
     spacing_list.append(dx)
 
 # %% plot err
-plt.loglog(spacing_list,err_list,'-.*',label="interp. $n=3$")
-plt.loglog(spacing_list,err_list_1st_ord,':o',label="interp. $n=1$")
+plt.loglog(spacing_list,err_list_5ord,'->',label="interp. $n=5$")
+plt.loglog(spacing_list,err_list_3ord,'-.*',label="interp. $n=3$")
+plt.loglog(spacing_list,err_list_1ord,':o',label="interp. $n=1$")
+err_fun5 = lambda h,qmat: 225/64*h**6*np.max(np.abs(d6fun(X,shifts,T)))/(6*5*4*3*2)
 err_fun3 = lambda h,qmat: 9/16*h**4*np.max(np.abs(d4fun(X,shifts,T)))/(4*3*2)
 err_fun1 = lambda h,qmat: 1/4*h**2*np.max(np.abs(d2fun(X,shifts,T)))/(2)
+plt.loglog(spacing_list,err_fun5(np.asarray(spacing_list),qmat),"k-", label="bound $n=5$")
 plt.loglog(spacing_list,err_fun3(np.asarray(spacing_list),qmat),"k-.", label="bound $n=3$")
 plt.loglog(spacing_list,err_fun1(np.asarray(spacing_list),qmat),"k:", label="bound $n=1$")
 plt.xlabel("$h$")
 plt.ylabel("$\Vert \mathbf{E} \Vert_\infty$")
 plt.legend(fontsize="small")
 plt.grid(which="both",linestyle=':')
-plt.show()
+plt.ylim([1e-15, 1])
 save_fig("images/transform_error.png")
+plt.show()
 # plt.pcolormesh(X,T,qmat - trafos[0].apply(trafos[0].reverse(qmat)))
 # plt.colorbar()
 
