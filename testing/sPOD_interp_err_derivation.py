@@ -1,9 +1,11 @@
 import sys
 sys.path.append('../lib/')
-
 from sympy import *
 from sympy.plotting import plot
-
+"""
+This script computes the error bound for the interpolation error of the shifted POD operators.
+Please compare the results to the computation of the numerical errors in the scrit sPOD_interp_err.py
+"""
 # %%
 x = symbols("x")
 a = symbols("sigma")

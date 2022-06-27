@@ -350,7 +350,7 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
         s = S[:r_]
         u = U[:, :r_]
         vt = VT[:r_, :]
-    err_svd = np.linalg.norm(q - np.dot(u * s, vt)) / norm_q
+    err_svd = np.linalg.norm(q - np.dot(u * s, vt),ord="fro") / norm_q
     print("rel-error using svd with %d modes:%4.4e"%(r_,err_svd))
     ###########################
 
@@ -383,6 +383,26 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
         print("it=%d rel_err= %4.4e t_cpu = %2.2f" % (it, rel_err, elapsed))
 
     return ReturnValue(qtilde_frames, qtilde, rel_err_list)
+
+def give_interpolation_error(snapshot_data, trafo):
+    """
+    This function computes the interpolation error of the non-linear representation of the data.
+    The error is "the best you can get" with the shifted POD.
+    Therefore it is the smallest possible error the shifted POD decomposition allows and can be
+    used as the stopping criteria inside the sPOD algorithm.
+    We calculate the relative error from the Frobenius norm:
+
+        err = || Q - T^(-1)[T[Q]] ||_F^2 / || Q ||_F^2
+    :param snapshot_data:
+    :param trafo:
+    :return:
+    """
+    from numpy import reshape
+
+    Q = reshape(snapshot_data,[-1,snapshot_data.shape[-1]])
+    rel_err  = norm(Q - trafo.apply(trafo.reverse(Q)), ord="fro")/norm(Q, ord="fro")
+    return rel_err/2
+
 
 
 ###############################################################################

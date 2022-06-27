@@ -53,6 +53,29 @@ if init_case == "one-transport":
     fields = density
     fields_ref = fun_reference_frame(X,T)
 
+# %% plot field and shifted field
+
+fields = fun(X, shifts, T)
+qmat = np.reshape(fields, [M, Nt])
+fields_ref = fun_reference_frame(X, T)
+qmat_ref = np.reshape(fields_ref, [M, Nt])
+
+fig,ax = plt.subplots(num=4)
+im = ax.pcolormesh(X,T,qmat)
+ax.set_xlabel("$x$")
+ax.set_ylabel("$t$")
+fig.colorbar(im, orientation='vertical')
+save_fig("images/qshift.png",figure=fig)
+#plt.colorbar()
+
+fig,ax = plt.subplots(num=5)
+im = ax.pcolormesh(X,T,qmat_ref)
+ax.set_xlabel("$x$")
+ax.set_ylabel("$t$")
+fig.colorbar(im, orientation='vertical')
+save_fig("images/qreference.png",figure=fig)
+
+
 ######################################
 # %% CALL THE SPOD algorithm
 ######################################
@@ -60,7 +83,7 @@ err_list_5ord = []
 err_list_3ord = []
 err_list_1ord = []
 spacing_list =[]
-for M in np.logspace(1.5,5.1,10,dtype=np.int32):
+for M in np.logspace(1,5.1,10,dtype=np.int32):
     x = np.arange(0, M) / M * L
     dx = x[1] - x[0]
     [X, T] = np.meshgrid(x, t)
@@ -90,7 +113,9 @@ for M in np.logspace(1.5,5.1,10,dtype=np.int32):
     err_list_5ord.append(err)
     spacing_list.append(dx)
 
+
 # %% plot err
+plt.figure(6)
 plt.loglog(spacing_list,err_list_5ord,'->',label="interp. $n=5$")
 plt.loglog(spacing_list,err_list_3ord,'-.*',label="interp. $n=3$")
 plt.loglog(spacing_list,err_list_1ord,':o',label="interp. $n=1$")
@@ -100,11 +125,11 @@ err_fun1 = lambda h,qmat: 1/4*h**2*np.max(np.abs(d2fun(X,shifts,T)))/(2)
 plt.loglog(spacing_list,err_fun5(np.asarray(spacing_list),qmat),"k-", label="bound $n=5$")
 plt.loglog(spacing_list,err_fun3(np.asarray(spacing_list),qmat),"k-.", label="bound $n=3$")
 plt.loglog(spacing_list,err_fun1(np.asarray(spacing_list),qmat),"k:", label="bound $n=1$")
-plt.xlabel("$h$")
+plt.xlabel("lattice spacing $h$")
 plt.ylabel("$\Vert \mathbf{E} \Vert_\infty$")
-plt.legend(fontsize="small")
+plt.legend(fontsize="small",loc=4)
 plt.grid(which="both",linestyle=':')
-plt.ylim([1e-15, 1])
+plt.ylim([1e-15, 10])
 save_fig("images/transform_error.png")
 plt.show()
 # plt.pcolormesh(X,T,qmat - trafos[0].apply(trafos[0].reverse(qmat)))

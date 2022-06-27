@@ -363,11 +363,22 @@ class transforms:
 
     def init_shifts_1D(self, dx, Lx, Nx, shifts, Nvar=1):
 
+        # If the interp_order is a list we take the first value for the forward transform T^k
+        # and the second element for the backward transform T^{-k}
+        # This property is used in the sPOD-J2 algorithm, since the redistribution/projection step allows lower
+        # interpolation order in the backward transform, without loosing precision.
+        if not isinstance(self.interp_order, list):
+            interp_order = [self.interp_order, self.interp_order]
+        else:
+            interp_order = self.interp_order
 
+        print("Setting up the shift matrices, with interpolation order:")
+        print("Forward T^k:     O(h^%d)"%interp_order[0])
+        print("Backward T^(-k): O(h^%d)" % interp_order[1])
         ### implement pos shift matrix ###
         shift_pos_mat_list = []
         shiftx_pos = shifts[:]
-        shiftx_pos_mat_list = self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx, order = self.interp_order)
+        shiftx_pos_mat_list = self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx, order = interp_order[0])
         # kron for each time slice
         for shiftx in shiftx_pos_mat_list:
             shift_pos_mat_list.append(sparse.kron(shiftx, sparse.eye(Nvar)))
@@ -375,7 +386,7 @@ class transforms:
         ### implement neg shift matrix ###
         shift_neg_mat_list = []
         shiftx_neg = -shiftx_pos
-        shiftx_neg_mat_list = self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx, order = self.interp_order)
+        shiftx_neg_mat_list = self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx, order = interp_order[1])
 
         # kron for each time slice
         for shiftx in shiftx_neg_mat_list:
