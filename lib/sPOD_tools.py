@@ -107,6 +107,22 @@ class frame:
         # the snapshot matrix is only stored with reduced number of SVD modes
         self.modal_system = {"U": U, "sigma": S, "VT": VT}
 
+    def smoothen_time_amplitudes(self, TV_iterations = 100, clambda =1):
+        """
+        This function enforces smoothness of the time amplitudes:
+        min_{b} || \partial_t b(t)|| + \lambda || b(t) - a(t)||
+        where a(t) is the input (nonsmooth field)
+        and b(t) is the smoothed field
+
+        :param TV_iterations:
+        :return:
+        """
+        from total_variation import solve_TVL1
+        VT  = self.modal_system["VT"]
+        self.modal_system["VT"]  = solve_TVL1(VT.T,clambda, iter_n=TV_iterations).T
+
+
+
     def build_field(self, rank = None):
         """
         Calculate the field from the SVD modes: X=U*S*VT
@@ -301,7 +317,7 @@ class ReturnValue:
     """
     This class inherits all return values of the shifted POD routines
     """
-    def __init__(self, frames, approximation, relaltive_error_hist = None, error_matrix = None, ranks = None):
+    def __init__(self, frames, approximation, relaltive_error_hist = None, error_matrix = None, ranks = None, ranks_hist = None):
      self.frames = frames               # list of all frames
      self.data_approx = approximation   # approximation of the snapshot data
      if relaltive_error_hist is not None:
@@ -310,11 +326,13 @@ class ReturnValue:
         self.error_matrix = error_matrix
      if ranks is not None:
          self.ranks = ranks
+     if ranks_hist is not None:
+         self.ranks_hist = ranks_hist
 
 ###############################################################################
 # distribute the residual of frame
 ###############################################################################        
-def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=True, use_rSVD = False):
+def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=True, use_rSVD = False, total_variation_iterations = -1):
     """
     :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
     :param transforms: Transformations
@@ -378,6 +396,8 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
             res_shifted = trafo.reverse(res)
             q_frame_field = q_frame.build_field()
             q_frame.set_orthonormal_system(q_frame_field + res_shifted/Nframes, use_rSVD)
+            if total_variation_iterations > 0:
+                q_frame.smoothen_time_amplitudes(TV_iterations=total_variation_iterations)
             qtilde += trafo.apply(q_frame.build_field())
         elapsed = time.time() - t
         print("it=%d rel_err= %4.4e t_cpu = %2.2f" % (it, rel_err, elapsed))
@@ -531,6 +551,7 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
     rel_err = 1
     res_old = 0
     rel_err_list = []
+    ranks_hist = [[] for r in range(Nframes)]
     while rel_err > eps and it < Niter:
         it += 1  # counts the number of iterations in the loop
         #############################
@@ -554,6 +575,7 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
             rank = np.sum(S > 0)
             q_frame.modal_system = {"U": U[:,:rank], "sigma": S[:rank], "VT": VT[:rank,:]}
             ranks.append(rank) # list of ranks for each frame
+            ranks_hist[k].append(rank)
             qtilde += trafo.apply(q_frame.build_field())
         ###########################
         # 4. Step: update noice term
@@ -573,12 +595,14 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
         norm_dres = np.abs(dres)
 
         norm_res = norm(reshape(res, -1))
+        rel_err_without_noise =  norm(reshape(res+E, -1))/norm_q
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
         elapsed = time.time() - t
-        print("it=%d rel_err= %4.4e norm(dres) = %4.1e norm(E)/norm(q) = %4.1e tcpu = %2.2f, ranks_frame = " % (
-        it, rel_err, mu*norm_dres/norm_q, norm(reshape(E, -1))/norm_q, elapsed), *ranks)
+        print("it=%d rel_err= %4.1e norm(dres) = %4.1e norm(Q-Qtilde)/norm(q) =%4.1e norm(E)/norm(q) = %4.1e tcpu = %2.2f, ranks_frame = " % (
+        it, rel_err, mu*norm_dres/norm_q,rel_err_without_noise, norm(reshape(E, -1))/norm_q, elapsed), *ranks)
 
+        ranks_hist.append(ranks)
 
     qtilde = 0
     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
@@ -586,7 +610,7 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
             S =frame_p.modal_system["sigma"]
             frame_p.Nmodes = np.sum(S > 0)
 
-    return ReturnValue(qtilde_frames, qtilde, rel_err_list, E, ranks)
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list, E, ranks, np.asarray(ranks_hist))
 
 
 
