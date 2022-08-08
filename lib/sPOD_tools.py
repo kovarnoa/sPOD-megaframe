@@ -197,6 +197,45 @@ def build_all_frames(frames, trafos = None, ranks = None):
 
     return qtilde
 
+def reconstruction_error(snapshotmatrix, frames, trafos = None, max_ranks = None):
+    """
+    :param frames: snapshotmatrix of all input data used to compute the frames
+    :param frames: List of frames q_k , k = 1,...,F
+    :param trafos: List of transformations T^k
+    :param ranks: integer number r_k > 0
+    :return: q = sum_k T^k q^k where q^k is of rank r_k
+    """
+    import itertools
+    if trafos is None:
+        trafos = [f.trafo for f in frames]
+
+    if max_ranks is not None:
+        if type(max_ranks) == int:
+            ranks = [max_ranks]*len(trafos)
+    else:
+        max_ranks = [frame.Nmodes for frame in frames]
+
+    possible_ranks_list = [np.arange(max_rank+1) for max_rank in max_ranks]
+    possible_ranks_list = list(itertools.product(*possible_ranks_list))
+    Nlist = len(possible_ranks_list)
+    norm_q = norm(snapshotmatrix,ord="fro")
+    max_dof = np.sum(np.asarray(max_ranks)+1)
+    error_matrix = 2*np.ones([max_dof-1,3])
+    for iter,ranks in enumerate(possible_ranks_list):
+
+        qtilde = np.zeros_like(snapshotmatrix)
+        for k, (trafo, frame) in enumerate(zip(trafos, frames)):
+            if ranks[k]>0:
+                qtilde += trafo.apply(frame.build_field(ranks[k]))
+        rel_err = norm(qtilde - snapshotmatrix, ord="fro")/norm_q
+        dof = np.sum(ranks)
+        print(" iter = %d/%d ranks = "%(iter+1,Nlist)+ " ".join(map(str,ranks)) + " error = %1.1e"%rel_err)
+        if rel_err < error_matrix[dof,-1]:
+            error_matrix[dof, -1] = rel_err
+            for ir, r in enumerate(ranks):
+                error_matrix[dof, ir] = r
+
+    return error_matrix
 
 # %%
 ###############################################################################
@@ -314,7 +353,7 @@ class ReturnValue:
 ###############################################################################
 # distribute the residual of frame
 ###############################################################################        
-def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=True, use_rSVD = False):
+def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=True, use_rSVD = False, dtol = 1e-7):
     """
     :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
     :param transforms: Transformations
@@ -381,8 +420,43 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
             qtilde += trafo.apply(q_frame.build_field())
         elapsed = time.time() - t
         print("it=%d rel_err= %4.4e t_cpu = %2.2f" % (it, rel_err, elapsed))
+        if it> 5 and np.abs(rel_err_list[-1]-rel_err_list[-4])<dtol*abs(rel_err_list[-1]):
+            break
+
 
     return ReturnValue(qtilde_frames, qtilde, rel_err_list)
+
+def force_constraint(qframes, transforms, q, Niter = 1, alphas = None):
+    """ this function enfroces the constraint Q = sum_k T^k Q^k"""
+    norm_q = norm(reshape(q, -1))
+    qtilde = np.zeros_like(q)
+    if alphas == None:
+        Nframes = len(transforms)
+        alphas = [1/Nframes]*Nframes
+
+    for iter in range(Niter):
+        qtilde = 0
+        for k, (trafo, q_frame) in enumerate(zip(transforms, qframes)):
+
+            qtilde += trafo.apply(q_frame.build_field())
+            q_frame.Nmodes = -1
+
+        res = q - qtilde
+        qtilde = 0
+        for k, (trafo, q_frame) in enumerate(zip(transforms, qframes)):
+
+            res_shifted = trafo.reverse(res)
+            q_frame_field = q_frame.build_field()
+            q_frame.set_orthonormal_system(q_frame_field + res_shifted * alphas[k], use_rSVD=False)
+            qtilde += trafo.apply(q_frame.build_field())
+
+    res = q - qtilde
+    norm_res = norm(reshape(res, -1))
+    rel_err = norm_res / norm_q
+
+    print("rel_err= %4.4e" % (rel_err))
+
+    return ReturnValue(qframes, qtilde)
 
 def give_interpolation_error(snapshot_data, trafo):
     """
@@ -579,6 +653,8 @@ def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16, Niter=
         print("it=%d rel_err= %4.4e norm(dres) = %4.1e norm(E)/norm(q) = %4.1e tcpu = %2.2f, ranks_frame = " % (
         it, rel_err, mu*norm_dres/norm_q, norm(reshape(E, -1))/norm_q, elapsed), *ranks)
 
+        if it> 20 and np.abs(rel_err_list[-1] - rel_err_list[-4]) < 1e-13:
+            break
 
     qtilde = 0
     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):

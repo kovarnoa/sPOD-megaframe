@@ -307,6 +307,16 @@ class transforms:
         ### implement pos shift matrix ###
 
         print("init shift matrix ...")
+
+        if not isinstance(self.interp_order, list):
+            interp_order = [self.interp_order, self.interp_order]
+        else:
+            interp_order = self.interp_order
+
+        print("Setting up the shift matrices, with interpolation order:")
+        print("Forward T^k:     O(h^%d)"%interp_order[0])
+        print("Backward T^(-k): O(h^%d)" % interp_order[1])
+
         Nx, Ny = Ngrid
         Lx, Ly = domain_size
         dx, dy = dX
@@ -324,8 +334,8 @@ class transforms:
             shifty_pos = shifts[1,...]
 
 
-            shiftx_pos_mat_list = self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx)
-            shifty_pos_mat_list = self.compute_shift_matrix(shifty_pos, Ly, dy, Ny)
+            shiftx_pos_mat_list = self.compute_shift_matrix(shiftx_pos, Lx, dx, Nx, order = interp_order[0])
+            shifty_pos_mat_list = self.compute_shift_matrix(shifty_pos, Ly, dy, Ny, order = interp_order[0])
 
             # kron for each time slice
             for shiftx, shifty in zip(shiftx_pos_mat_list, shifty_pos_mat_list):
@@ -336,8 +346,8 @@ class transforms:
 
             shiftx_neg = -shiftx_pos
             shifty_neg = -shifty_pos
-            shiftx_neg_mat_list = self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx)
-            shifty_neg_mat_list = self.compute_shift_matrix(shifty_neg, Ly, dy, Ny)
+            shiftx_neg_mat_list = self.compute_shift_matrix(shiftx_neg, Lx, dx, Nx, order = interp_order[1])
+            shifty_neg_mat_list = self.compute_shift_matrix(shifty_neg, Ly, dy, Ny, order = interp_order[1])
 
             # kron for each time slice
             for shiftx, shifty in zip(shiftx_neg_mat_list, shifty_neg_mat_list):
