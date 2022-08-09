@@ -371,7 +371,7 @@ class ReturnValue:
 ###############################################################################
 # distribute the residual of frame
 ###############################################################################        
-def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=True, use_rSVD = False,dtol = 1e-7, total_variation_iterations = -1):
+def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, use_rSVD = False,dtol = 1e-7, total_variation_iterations = -1):
     """
     :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
     :param transforms: Transformations
@@ -379,6 +379,9 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1, visualize=Tru
     :param eps: stopping criteria
     :param Niter: maximal number of iterations
     :param visualize: if true: show intermediet results
+    :param use_rSVD: if true: uses the randomiced singular value decomposition (make sure it does not influence the results!)
+    :param dtol: stops the algorithm if the relative residual doesnt change for 5 iterations more then dtol
+    :param total_variation_iterations: number of total variation steps for each sPOD iteration. good value is 20
     :return:
     """
 
