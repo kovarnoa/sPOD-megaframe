@@ -14,6 +14,7 @@ decomposition (SPOD).
 import os
 import time
 import pickle
+from dataclasses import dataclass
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -380,9 +381,9 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
 # ============================================================================ #
 #                                sPOD ALGORITHMS                               #
 # ============================================================================ #
-#-------------------------------------------- #
+# -------------------------------------------- #
 # CLASS of return values
-#-------------------------------------------- #
+# -------------------------------------------- #
 class ReturnValue:
     """
     This class inherits all return values of the shifted POD routines
@@ -399,11 +400,11 @@ class ReturnValue:
          self.ranks = ranks
      if ranks_hist is not None:
          self.ranks_hist = ranks_hist
-#-------------------------------------------- #
-         
-#-------------------------------------------- #
+# -------------------------------------------- #
+
+# -------------------------------------------- #
 # Distribute the residual of frame
-#-------------------------------------------- #
+# -------------------------------------------- #
 def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1,
                 use_rSVD=False, dtol=1e-7, total_variation_iterations=-1):
     """
@@ -487,8 +488,7 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, eps, Niter=1,
     return ReturnValue(qtilde_frames, qtilde, rel_err_list)
 
 
-def shifted_POD_mac(snapshot_matrix, transforms, nmodes, eps, Niter=1,
-                    use_rSVD=False, dtol=1e-7, total_variation_iterations=-1):
+def shifted_POD_mac(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=False):
     """
     :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
     :param transforms: Transformations
@@ -511,6 +511,8 @@ def shifted_POD_mac(snapshot_matrix, transforms, nmodes, eps, Niter=1,
     #########################
     q = snapshot_matrix
     qtilde = np.zeros_like(q)
+    if myparams.isError:
+        E = np.zeros_like(snapshot_matrix)
     Nframes = len(transforms)
     if np.size(nmodes) != Nframes:
         nmodes = list([nmodes]) * Nframes
@@ -534,13 +536,15 @@ def shifted_POD_mac(snapshot_matrix, transforms, nmodes, eps, Niter=1,
     it = 0
     rel_err = 1
     rel_err_list = []
-    while rel_err > eps and it < Niter:
-
+    while rel_err > myparams.eps and it < myparams.maxit:
         it += 1  # counts the number of iterations in the loop
         #############################
         # 2.Step: Calculate Residual
         #############################
-        res = q - qtilde
+        if myparams.isError:
+            res = q - qtilde - E
+        else:
+            res = q - qtilde
         norm_res = norm(reshape(res,-1))
         rel_err = norm_res/norm_q
         rel_err_list.append(rel_err)
@@ -555,16 +559,21 @@ def shifted_POD_mac(snapshot_matrix, transforms, nmodes, eps, Niter=1,
             q_frame_field = q_frame.build_field()
             stepsize = 1/Nframes
             mylambda = 1e-2
+            mymu = 1e-2
             q_frame.set_orthonormal_system_mac(q_frame_field + stepsize*res_shifted,
-                                               stepsize*mylambda)
-            if total_variation_iterations > 0:
+                                               stepsize*myparams.lamb)
+            if myparams.total_variation_iterations > 0:
                 q_frame.smoothen_time_amplitudes(
-                    TV_iterations=total_variation_iterations)
+                    TV_iterations=myparams.total_variation_iterations)
             qtilde += trafo.apply(q_frame.build_field())
+        if myparams.isError:
+            E = shrink(E + stepsize*res, stepsize*myparams.mu)
         elapsed = time.perf_counter() - t
-        print("it=%d rel_err= %4.4e t_cpu = %2.2f" % (it, rel_err, elapsed))
+        if myparams.isVerbose:
+            print("Iter {:4d} / Rel_err= {:4.4e} | t_cpu = {:2.2f}s"\
+                  .format(it, rel_err, elapsed))
         if (it > 5) and (np.abs(rel_err_list[-1]-rel_err_list[-4]) \
-                         < dtol*abs(rel_err_list[-1])):
+                         < myparams.gtol*abs(rel_err_list[-1])):
             break
 
     return ReturnValue(qtilde_frames, qtilde, rel_err_list)
@@ -621,11 +630,11 @@ def give_interpolation_error(snapshot_data, trafo):
     Q = reshape(snapshot_data,[-1,snapshot_data.shape[-1]])
     rel_err  = norm(Q - trafo.apply(trafo.reverse(Q)), ord="fro")/norm(Q, ord="fro")
     return rel_err/2
+# -------------------------------------------- #
 
-
-#-------------------------------------------- #
-# shifted rPCA
-#-------------------------------------------- #
+# -------------------------------------------- #
+# Shifted rPCA
+# -------------------------------------------- #
 def shifted_rPCA(snapshot_matrix, transforms, nmodes_max=None, eps=1e-16,
                  Niter=1, use_rSVD=False, visualize=True, mu=None, lambd=None,
                  dtol=1e-13):
@@ -771,3 +780,14 @@ def load_frames(fname, Nframes, load_ErrMat=False):
         return frame_list, E
     else:
         return frame_list
+
+@dataclass
+class sPOD_Param:
+    gtol: float = 1e-7
+    eps: float = 1e-16
+    maxit: int = 10000
+    isVerbose: bool = True
+    isError: bool = False
+    lamb: float = 1E-2
+    mu: float = 1E-2
+    total_variation_iterations: int = -1
