@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sPOD_tools import shifted_rPCA, shifted_POD, give_interpolation_error
 from transforms import transforms
-from plot_utils import save_fig
+#from plot_utils import save_fig
 ###############################################################################
 
 ##########################################
@@ -31,7 +31,7 @@ method = "shifted_POD"
 case = "sine_waves"
 Nx = 100 # number of grid points in x
 Nt = Nx//2  # numer of time intervalls
-Niter = 1300 # number of sPOD iterations
+Niter = 3000 # number of sPOD iterations
 Tmax = 0.5  # total time
 L = 1  # total domain size
 sigma = 0.015  # standard diviation of the puls
@@ -56,7 +56,7 @@ if case == "crossing_waves":
     velocity = fun(X, T)
     shifts1 = np.asarray(-c*t)
     shifts2 = np.asarray(c*t)
-    fields = [density]  #, velocity]
+    fields = density  #, velocity]
 elif case == "sine_waves":
     delta = 0.0125
     q1 = np.zeros_like(X)
@@ -139,7 +139,7 @@ for axes in ax[:4]:
 plt.colorbar(im2)
 plt.tight_layout()
 
-save_fig("01_traveling_wave_1D_Frames.png",fig)
+#save_fig("01_traveling_wave_1D_Frames.png",fig)
 plt.show()
 ###########################################
 # %% 2. visualize your results: relative error
