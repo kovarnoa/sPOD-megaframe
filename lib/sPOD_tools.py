@@ -781,6 +781,7 @@ def load_frames(fname, Nframes, load_ErrMat=False):
     else:
         return frame_list
 
+
 @dataclass
 class sPOD_Param:
     gtol: float = 1e-7
