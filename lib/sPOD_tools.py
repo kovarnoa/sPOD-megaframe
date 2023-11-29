@@ -755,11 +755,6 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
             U = q_frame.modal_system["U"]
             VT = q_frame.modal_system["VT"]
             rank = np.sum(S > 0)
-            q_frame.modal_system = {
-                "U": U[:, :rank],
-                "sigma": S[:rank],
-                "VT": VT[:rank, :],
-            }
             ranks.append(rank)
             ranks_hist[k].append(rank)
             qtilde += trafo.apply(q_frame.build_field())
