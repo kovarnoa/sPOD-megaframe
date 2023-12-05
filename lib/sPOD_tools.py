@@ -664,7 +664,7 @@ def shifted_POD_ADM(
     )
 
 
-def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=False):
+def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=False):
     """
     :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
     :param transforms: Transformations
@@ -758,7 +758,6 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
             ranks.append(rank)
             ranks_hist[k].append(rank)
             qtilde += trafo.apply(q_frame.build_field())
-            # res = q - qtilde
         if myparams.isError:
             E = shrink(E + stepsize * res, stepsize * myparams.mu)
         elapsed = time.perf_counter() - t
@@ -783,6 +782,266 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
     print("CPU time avarege per iteration: ", av_elpsed)
     return ReturnValue(
         qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist)
+    )
+
+
+def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=False):
+    """
+    :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
+    :param transforms: Transformations
+    :param nmodes: number of modes allowed in each frame
+    :param eps: stopping criteria
+    :param Niter: maximal number of iterations
+    :param visualize: if true: show intermediet results
+    :param use_rSVD: if true: uses the randomiced singular value decomposition (make sure it does not influence the results!)
+    :param dtol: stops the algorithm if the relative residual doesnt change for 5 iterations more then dtol
+    :param total_variation_iterations: number of total variation steps for each sPOD iteration. good value is 20
+    :return:
+    """
+
+    assert np.ndim(snapshot_matrix) == 2, (
+        "Are you stephen hawking, trying to solve this problem in 16 dimensions?"
+        "Please give me a snapshotmatrix with every snapshot in one column"
+    )
+    if use_rSVD:
+        warn(
+            "Using rSVD to accelarate decomposition procedure may lead to different results, pls check!"
+        )
+    #########################
+    ## 1.Step: Initialize
+    #########################
+    q = snapshot_matrix
+    qtilde = np.zeros_like(q)
+    if myparams.isError:
+        E = np.zeros_like(snapshot_matrix)
+    Nframes = len(transforms)
+    if np.size(nmodes) != Nframes:
+        nmodes = list([nmodes]) * Nframes
+    qtilde_frames = [
+        frame(trafo, qtilde, number_of_modes=nmodes[k])
+        for k, trafo in enumerate(transforms)
+    ]
+    norm_q = norm(reshape(q, -1))
+    ###########################
+    # error of svd:
+    r_ = np.sum(nmodes)
+    if use_rSVD:
+        u, s, vt = randomized_svd(q, n_components=r_)
+    else:
+        [U, S, VT] = svd(q, full_matrices=False)
+        s = S[:r_]
+        u = U[:, :r_]
+        vt = VT[:r_, :]
+    err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
+    print("rel-error using svd with %d modes:%4.4e" % (r_, err_svd))
+    ###########################
+
+    it = 0
+    rel_err = 1
+    rel_err_list = []
+    ranks_hist = [[] for r in range(Nframes)]
+    sum_elapsed = 0
+    while rel_err > myparams.eps and it < myparams.maxit:
+        it += 1  # counts the number of iterations in the loop
+        #############################
+        # 2.Step: Calculate Residual
+        #############################
+        if myparams.isError:
+            res = q - qtilde - E
+        else:
+            res = q - qtilde
+        norm_res = norm(reshape(res, -1))
+        rel_err = norm_res / norm_q
+        rel_err_list.append(rel_err)
+        # qtilde = np.zeros_like(q)
+        ranks = []
+
+        ###########################
+        # 3. Step: update frames
+        ##########################
+        t = time.perf_counter()
+        for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
+            res_shifted = trafo.reverse(res)
+            q_frame_field = q_frame.build_field()
+            qtilde -= trafo.apply(q_frame.build_field())  # remove old
+            stepsize = 1 / Nframes
+            q_frame.set_orthonormal_system_svt(
+                q_frame_field + stepsize * res_shifted, stepsize * myparams.lamb
+            )
+            if myparams.total_variation_iterations > 0:
+                q_frame.smoothen_time_amplitudes(
+                    TV_iterations=myparams.total_variation_iterations
+                )
+            S = q_frame.modal_system["sigma"]
+            U = q_frame.modal_system["U"]
+            VT = q_frame.modal_system["VT"]
+            rank = np.sum(S > 0)
+            ranks.append(rank)
+            ranks_hist[k].append(rank)
+            qtilde += trafo.apply(q_frame.build_field())
+            if myparams.isError:
+                res = q - qtilde - E
+            else:
+                res = q - qtilde
+        if myparams.isError:
+            E = shrink(E + stepsize * res, stepsize * myparams.mu)
+        elapsed = time.perf_counter() - t
+        sum_elapsed += elapsed
+        if myparams.isVerbose:
+            print(
+                "Iter {:4d} / Rel_err= {:4.4e} | t_cpu = {:2.2f}s".format(
+                    it, rel_err, elapsed
+                )
+            )
+        if (it > 5) and (
+            np.abs(rel_err_list[-1] - rel_err_list[-4])
+            < myparams.gtol * abs(rel_err_list[-1])
+        ):
+            break
+
+    if myparams.isError:
+        return ReturnValue(
+            qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist), E
+        )
+    av_elpsed = sum_elapsed / it
+    print("CPU time avarege per iteration: ", av_elpsed)
+    return ReturnValue(
+        qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist)
+    )
+
+
+def shifted_POD_BFB_obj_stop(
+    snapshot_matrix, transforms, nmodes, myparams, use_rSVD=False
+):
+    """
+    :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
+    :param transforms: Transformations
+    :param nmodes: number of modes allowed in each frame
+    :param eps: stopping criteria
+    :param Niter: maximal number of iterations
+    :param visualize: if true: show intermediet results
+    :param use_rSVD: if true: uses the randomiced singular value decomposition (make sure it does not influence the results!)
+    :param dtol: stops the algorithm if the relative residual doesnt change for 5 iterations more then dtol
+    :param total_variation_iterations: number of total variation steps for each sPOD iteration. good value is 20
+    :return:
+    """
+
+    assert np.ndim(snapshot_matrix) == 2, (
+        "Are you stephen hawking, trying to solve this problem in 16 dimensions?"
+        "Please give me a snapshotmatrix with every snapshot in one column"
+    )
+    if use_rSVD:
+        warn(
+            "Using rSVD to accelarate decomposition procedure may lead to different results, pls check!"
+        )
+    #########################
+    ## 1.Step: Initialize
+    #########################
+    q = snapshot_matrix
+    qtilde = np.zeros_like(q)
+    if myparams.isError:
+        E = np.zeros_like(snapshot_matrix)
+    Nframes = len(transforms)
+    if np.size(nmodes) != Nframes:
+        nmodes = list([nmodes]) * Nframes
+    qtilde_frames = [
+        frame(trafo, qtilde, number_of_modes=nmodes[k])
+        for k, trafo in enumerate(transforms)
+    ]
+    norm_q = norm(reshape(q, -1))
+
+    ###########################
+    # error of svd:
+    r_ = np.sum(nmodes)
+    if use_rSVD:
+        u, s, vt = randomized_svd(q, n_components=r_)
+    else:
+        [U, S, VT] = svd(q, full_matrices=False)
+        s = S[:r_]
+        u = U[:, :r_]
+        vt = VT[:r_, :]
+    err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
+    print("rel-error using svd with %d modes:%4.4e" % (r_, err_svd))
+    ###########################
+
+    it = 0
+    objective_0 = 0.5 * norm(q, ord="fro") ** 2
+    objective_list = [objective_0]
+    rel_decrease = 1
+    rel_decrease_list = [1]
+    ranks_hist = [[] for r in range(Nframes)]
+    sum_elapsed = 0
+    while rel_decrease > myparams.eps and it < myparams.maxit:
+        it += 1  # counts the number of iterations in the loop
+        #############################
+        # 2.Step: Calculate Residual
+        #############################
+        if myparams.isError:
+            res = q - qtilde - E
+        else:
+            res = q - qtilde
+        # norm_res = norm(reshape(res, -1))
+        # rel_err = norm_res / norm_q
+        # rel_err_list.append(rel_err)
+        # qtilde = np.zeros_like(q)
+        ranks = []
+
+        ###########################
+        # 3. Step: update frames
+        ##########################
+        t = time.perf_counter()
+        for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
+            res_shifted = trafo.reverse(res)
+            q_frame_field = q_frame.build_field()
+            qtilde -= trafo.apply(q_frame.build_field())  # remove old
+            stepsize = 1 / Nframes
+            q_frame.set_orthonormal_system_svt(
+                q_frame_field + stepsize * res_shifted, stepsize * myparams.lamb
+            )
+            if myparams.total_variation_iterations > 0:
+                q_frame.smoothen_time_amplitudes(
+                    TV_iterations=myparams.total_variation_iterations
+                )
+            S = q_frame.modal_system["sigma"]
+            U = q_frame.modal_system["U"]
+            VT = q_frame.modal_system["VT"]
+            rank = np.sum(S > 0)
+            ranks.append(rank)
+            ranks_hist[k].append(rank)
+            qtilde += trafo.apply(q_frame.build_field())
+            if myparams.isError:
+                res = q - qtilde - E
+            else:
+                res = q - qtilde
+        if myparams.isError:
+            E = shrink(E + stepsize * res, stepsize * myparams.mu)
+        objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lamb * sum(
+            norm(qk.build_field(), ord="nuc") for qk in qtilde_frames
+        )
+        objective_list.append(objective)
+        rel_decrease = np.abs((objective_list[-1] - objective_list[-2])) / np.abs(
+            objective_list[-1]
+        )
+        rel_decrease_list.append(rel_decrease)
+        elapsed = time.perf_counter() - t
+        sum_elapsed += elapsed
+        if myparams.isVerbose:
+            print(
+                "Iter {:4d} / Rel_decrease= {:4.4e} | t_cpu = {:2.2f}s".format(
+                    it, rel_decrease, elapsed
+                )
+            )
+        if (it > 5) and (rel_decrease < myparams.gtol):
+            break
+
+    if myparams.isError:
+        return ReturnValue(
+            qtilde_frames, qtilde, rel_decrease, ranks, np.asarray(ranks_hist), E
+        )
+    av_elpsed = sum_elapsed / it
+    print("CPU time avarege per iteration: ", av_elpsed)
+    return ReturnValue(
+        qtilde_frames, qtilde, rel_decrease, ranks, np.asarray(ranks_hist)
     )
 
 
@@ -1028,7 +1287,7 @@ def load_frames(fname, Nframes, load_ErrMat=False):
 
 @dataclass
 class sPOD_Param:
-    gtol: float = 1e-7
+    gtol: float = 1e-4
     eps: float = 1e-16
     maxit: int = 10000
     isVerbose: bool = True
