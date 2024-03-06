@@ -17,7 +17,7 @@ import numpy as np
 from numpy import exp, mod,meshgrid,pi,sin,size
 import matplotlib.pyplot as plt
 from sPOD_tools import frame, shifted_POD,shifted_rPCA
-from transforms import transforms
+from transforms import Transform
 from farge_colormaps import farge_colormap_multi
 ###############################################################################
 cm = farge_colormap_multi()
@@ -26,7 +26,7 @@ cm = farge_colormap_multi()
 ##########################################
 plt.close("all")
 Ngrid = [401, 202]  # number of grid points in x
-Nt = 50            # Number of time intervalls
+Nt = 50             # Number of time intervalls
 Nvar = 1            # Number of variables
 nmodes = 1          # reduction of singular values
 
@@ -82,8 +82,8 @@ for it,t in enumerate(time):
 
 # %% Create Trafo
 
-shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy], use_scipy_transform=False )
-shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy], use_scipy_transform=False )
+shift_trafo_1 = Transform(data_shape,L, shifts = shift1, dx = [dx,dy], use_scipy_transform=False )
+shift_trafo_2 = Transform(data_shape,L, shifts = shift2, dx = [dx,dy], use_scipy_transform=False )
 
 qshift1 = shift_trafo_1.reverse(q)
 qshift2 = shift_trafo_2.reverse(q)

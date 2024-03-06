@@ -1,5 +1,3 @@
-
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
@@ -14,7 +12,7 @@ from scipy import sparse
 from numpy import meshgrid, size, reshape, floor
 import numpy as np
 import scipy.ndimage as ndimage
-from numba import njit
+#from numba import njit
 # %%
 
 
@@ -35,13 +33,13 @@ def lagrange(xvals, xgrid, j):
     for i,xval in enumerate([xvals]):
         nominator = xval - xgrid
         denominator = xgrid[j] - xgrid
-        p = nominator/(denominator+1e-32)                               #add SMALL for robustness
+        p = nominator/(denominator+np.finfo(float).eps)
         p[j] = 1
         Lj[i] = np.prod(p)
 
     return Lj
 
-@njit()
+#@njit()
 def lagrange_numba(xvals, xgrid, j):
     """
     Returns the j-th basis polynomial evaluated at xvals
@@ -51,13 +49,13 @@ def lagrange_numba(xvals, xgrid, j):
     for i,xval in enumerate([xvals]):
         nominator = xval - xgrid
         denominator = xgrid[j] - xgrid
-        p = nominator/(denominator+1e-32)                               #add SMALL for robustness
+        p = nominator/(denominator+np.finfo(float).eps)
         p[j] = 1
         Lj = np.prod(p)
 
     return Lj
 
-@njit()
+#@njit()
 def meshgrid2D(x, y):
     xx = np.empty(shape=(x.size, y.size), dtype=x.dtype)
     yy = np.empty(shape=(x.size, y.size), dtype=y.dtype)
@@ -67,10 +65,9 @@ def meshgrid2D(x, y):
                 yy[j,k] = y[j]
     return yy, xx
 
-@njit()
+#@njit()
 def compute_general_shift_matrix_numba( shifts, domain_size, spacings, Ngrid, Ix, Iy):
     """
-
     :param shifts: shift(x_i,t_j) assumes an array of size i=0,...,Nx -1 ; j=0,...,Nt
     :param domain_length:
     :param spacings:
@@ -90,51 +87,52 @@ def compute_general_shift_matrix_numba( shifts, domain_size, spacings, Ngrid, Ix
     dx, dy = spacings
     Nx, Ny = Ngrid
     for ik in range(Nx*Ny):
-                # define shifts
-                shift_x = shifts[0,ik] # delta_1(x_i,y_i,t)
-                shift_x = np.mod(shift_x,domain_size[0]) # if periodicity is assumed
-                shift_y = shifts[1,ik] # delta_2(x_i,y_i,t)
-                shift_y = np.mod(shift_y,domain_size[1]) # if periodicity is assumed
-                # lexicographical index ik to local grid index ix, iy
-                (ix, iy) = (Ix[ik], Iy[ik])
+        # define shifts
+        shift_x = shifts[0,ik] # delta_1(x_i,y_i,t)
+        shift_x = np.mod(shift_x,domain_size[0]) # if periodicity is assumed
+        shift_y = shifts[1,ik] # delta_2(x_i,y_i,t)
+        shift_y = np.mod(shift_y,domain_size[1]) # if periodicity is assumed
+        # lexicographical index ik to local grid index ix, iy
+        (ix, iy) = (Ix[ik], Iy[ik])
 
-                # shift is close to sogenerame discrete index:
-                idx_0 = floor(shift_x / dx)
-                idy_0 = floor(shift_y / dy)
-                # save all neighbours
-                idx_list = np.asarray([idx_0 - 1, idx_0, idx_0 + 1, idx_0 + 2], dtype=np.int32) + ix
-                idx_list = np.asarray([np.mod(idx, Nx) for idx in idx_list]) # assumes periodicity
-                idy_list = np.asarray([idy_0 - 1, idy_0, idy_0 + 1, idy_0 + 2], dtype=np.int32) + iy
-                idy_list = np.asarray([np.mod(idy, Ny) for idy in idy_list])  # assumes periodicity
-                # compute the distance to the index
-                delta_idx = shift_x / dx - idx_0
-                delta_idy = shift_y / dy - idy_0
-                # compute the 4 langrage basis elements
-                lagrange_coefs_x = np.array([lagrange_numba(delta_idx, [-1, 0, 1, 2], j) for j in range(4)])
-                lagrange_coefs_y = np.array([lagrange_numba(delta_idy, [-1, 0, 1, 2], j) for j in range(4)])
-                lagrange_coefs = np.outer(lagrange_coefs_y, lagrange_coefs_x)
-                lagrange_coefs = lagrange_coefs.reshape((-1,))
-                #
-                IDX_mesh, IDY_mesh = meshgrid2D(idx_list, idy_list)
-                IK_mesh = IDX_mesh + IDY_mesh*Nx
-                IKs = IK_mesh.reshape((-1,))
-                col += list(IKs)
-                row += list(ik * np.ones_like(IKs))
-                val += list(lagrange_coefs)
-# if idx_list[0] < 0 : idx_list[0] += Npoints
-            # if idx_list[2] > Npoints - 1: idx_list[2] -= Npoints
-            # if idx_list[3] > Npoints - 1: idx_list[3] -= Npoints
+        # shift is close to sogenerame discrete index:
+        idx_0 = floor(shift_x / dx)
+        idy_0 = floor(shift_y / dy)
+        # save all neighbours
+        idx_list = np.asarray([idx_0 - 1, idx_0, idx_0 + 1, idx_0 + 2], dtype=np.int32) + ix
+        idx_list = np.asarray([np.mod(idx, Nx) for idx in idx_list]) # assumes periodicity
+        idy_list = np.asarray([idy_0 - 1, idy_0, idy_0 + 1, idy_0 + 2], dtype=np.int32) + iy
+        idy_list = np.asarray([np.mod(idy, Ny) for idy in idy_list])  # assumes periodicity
+        # compute the distance to the index
+        delta_idx = shift_x / dx - idx_0
+        delta_idy = shift_y / dy - idy_0
+        # compute the 4 langrage basis elements
+        lagrange_coefs_x = np.array([lagrange_numba(delta_idx, [-1, 0, 1, 2], j) for j in range(4)])
+        lagrange_coefs_y = np.array([lagrange_numba(delta_idy, [-1, 0, 1, 2], j) for j in range(4)])
+        lagrange_coefs = np.outer(lagrange_coefs_y, lagrange_coefs_x)
+        lagrange_coefs = lagrange_coefs.reshape((-1,))
+        #
+        IDX_mesh, IDY_mesh = meshgrid2D(idx_list, idy_list)
+        IK_mesh = IDX_mesh + IDY_mesh*Nx
+        IKs = IK_mesh.reshape((-1,))
+        col += list(IKs)
+        row += list(ik * np.ones_like(IKs))
+        val += list(lagrange_coefs)
+        # if idx_list[0] < 0 : idx_list[0] += Npoints
+        # if idx_list[2] > Npoints - 1: idx_list[2] -= Npoints
+        # if idx_list[3] > Npoints - 1: idx_list[3] -= Npoints
 
     val = np.asarray(val)
     return col,row,val
 
 
-class transforms:
+class Transform:
     # TODO: Add properties of class frame in the description
-    """ Class of all Transforms.
-        A transformation can be implemented as a
-            + shift T^c q(x,t) = q(x-ct,t)
-            + rotation T^w q(x,y,t) = q(R(omega)(x,y),t) where R(omega) is the rotation matrix
+    """
+    Class of all Transforms.
+    A transformation can be implemented as a
+    + shift T^c q(x,t) = q(x-ct,t)
+    + rotation T^w q(x,y,t) = q(R(omega)(x,y),t) where R(omega) is the rotation matrix
     """
 
     def __init__(self, data_shape, domain_size, trafo_type="shift", shifts = None, \

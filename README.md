@@ -2,6 +2,13 @@
 This is a python tool for decomposing and model reduction for multiple transport phenomena.
 It is written in python3.
 
+## Requirements
+In order to run sPOD package, the following libraries are required:
+ * Numpy
+ * Matplotlib
+ * Scikit-learn
+ * SciPy
+
 ## Installation
 Clone the repository and use it in your python code
 

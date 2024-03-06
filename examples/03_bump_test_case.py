@@ -18,7 +18,7 @@ from numpy import exp, mod, meshgrid, pi, sin, size, cos
 from numpy.linalg import norm
 import matplotlib.pyplot as plt
 from sPOD_tools import frame, shifted_POD, shifted_rPCA, build_all_frames
-from transforms import transforms
+from transforms import Transform
 from plot_utils import show_animation
 from farge_colormaps import farge_colormap_multi
 import random as random
@@ -97,9 +97,9 @@ plt.pcolormesh(X,Y,q[...,0,5])
 # %% Create Trafo
 import scipy.ndimage as ndimage
 
-shift_trafo_1 = transforms(data_shape,L, shifts = shift1, dx = [dx,dy] , use_scipy_transform=True)
-shift_trafo_2 = transforms(data_shape,L, shifts = shift2, dx = [dx,dy] , use_scipy_transform=True)
-shift_trafo_3 = transforms(data_shape,L, trafo_type="identity", shifts = shift3, dx = [dx,dy] )
+shift_trafo_1 = Transform(data_shape,L, shifts = shift1, dx = [dx,dy] , use_scipy_transform=True)
+shift_trafo_2 = Transform(data_shape,L, shifts = shift2, dx = [dx,dy] , use_scipy_transform=True)
+shift_trafo_3 = Transform(data_shape,L, trafo_type="identity", shifts = shift3, dx = [dx,dy] )
 
 
 qshift1 = shift_trafo_1.reverse(q1)

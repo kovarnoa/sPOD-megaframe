@@ -5,15 +5,14 @@ import numpy as np
 from numpy import meshgrid
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from sPOD_tools import (
+from sPOD_algo import (
     shifted_POD_BFB,
-    shifted_POD_BFB_obj_stop,
-    shifted_POD_ADM,
+    shifted_POD_ALM,
     shifted_POD_JFB,
     sPOD_Param,
     give_interpolation_error,
 )
-from transforms import transforms
+from transforms import Transform
 from plot_utils import save_fig
 
 pic_dir = pic_dir = "../images/"
@@ -52,9 +51,9 @@ fields, shift_list, L, dx, Nx, Nt, nmodes = generate_wildlandfire_data(
 
 data_shape = [Nx, 1, 1, Nt]
 trafos = [
-    transforms(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=5),
-    transforms(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=5),
-    transforms(data_shape, [L], shifts=shift_list[2], dx=[dx], interp_order=5),
+    Transform(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=5),
+    Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=5),
+    Transform(data_shape, [L], shifts=shift_list[2], dx=[dx], interp_order=5),
 ]
 
 interp_err = np.max([give_interpolation_error(fields, trafo) for trafo in trafos])
@@ -62,15 +61,14 @@ print("interpolation error: %1.2e " % interp_err)
 
 qmat = np.reshape(fields, [Nx, Nt])
 
-# method = "shifted_POD_ADM"
+# method = "shifted_POD_ALM"
 # method = "shifted_POD_JFB"
-# method = "shifted_POD_BFB"
-method = "shifted_POD_BFB_obj_stop"
+method = "shifted_POD_BFB"
 lambda0 = 4000  # for Temperature
 # lambda0 = 27  # for supply mass
 
-if method == "shifted_POD_ADM":
-    ret = shifted_POD_ADM(
+if method == "shifted_POD_ALM":
+    ret = shifted_POD_ALM(
         qmat,
         trafos,
         nmodes_max=np.max(nmodes) + 10,
@@ -83,24 +81,17 @@ if method == "shifted_POD_ADM":
 elif method == "shifted_POD_BFB":
     myparams = sPOD_Param(
         maxit=Niter,
-        lamb=lambda0,
+        lambda_s=lambda0,
         total_variation_iterations=40,
     )
     ret = shifted_POD_BFB(qmat, trafos, nmodes, myparams)
 elif method == "shifted_POD_JFB":
     myparams = sPOD_Param(
         maxit=Niter,
-        lamb=lambda0,
+        lambda_s=lambda0,
         total_variation_iterations=40,
     )
     ret = shifted_POD_JFB(qmat, trafos, nmodes, myparams)
-elif method == "shifted_POD_BFB_obj_stop":
-    myparams = sPOD_Param(
-        maxit=Niter,
-        lamb=lambda0,
-        total_variation_iterations=40,
-    )
-    ret = shifted_POD_BFB_obj_stop(qmat, trafos, nmodes, myparams)
 
 print(ret.ranks_hist)
 
@@ -214,18 +205,11 @@ for ip, fac in enumerate([0.01, 0.1, 0, 10, 100]):  # ,400, 800]):#,800,1000]:
     lambd = lamb * fac
     # transformations with interpolation order T^k of Ord(h^5) and T^{-k} of Ord(h^5)
     if method == "shifted_POD_JFB":
-        myparams = sPOD_Param(maxit=Niter, lamb=lambd)
+        myparams = sPOD_Param(maxit=Niter, lambda_s=lambd)
         ret = shifted_POD_JFB(qmat, trafos, nmodes, myparams)
     elif method == "shifted_POD_BFB":
-        myparams = sPOD_Param(maxit=Niter, lamb=lambd)
+        myparams = sPOD_Param(maxit=Niter, lambda_s=lambd)
         ret = shifted_POD_BFB(qmat, trafos, nmodes, myparams)
-    elif method == "shifted_POD_BFB_obj_stop":
-        myparams = sPOD_Param(
-            maxit=Niter,
-            lamb=lambda0,
-            total_variation_iterations=40,
-        )
-        ret = shifted_POD_BFB_obj_stop(qmat, trafos, nmodes, myparams)
     print("Picture 9b: ", ret.ranks_hist)
 
     ret_list.append(ret)
