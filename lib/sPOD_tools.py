@@ -388,13 +388,13 @@ def shift_velocities(dx, dt, fields, n_velocities, v_min, v_max, v_step, n_modes
 #                               PROXIMAL OPERATORS                             #
 # ============================================================================ #
 def shrink(x, gamma):
-    """
+    r"""
     This function implements the proximal operator of the l1-norm of a vector
     :math:`x` living in an Hilbert space :math:`\mathcal{H}`.
     This operator is also known as the soft thresholding and it is uniquely
     defined as  the point :math:`y` in :math:`\mathcal{H}` such that
 
-    .. math::
+    .. math:: 
 
         y = \argmin_{z\in\mathcal{H}} \ell_{1}(z) + \frac{1}{2\gamma}\|z-x\|_{2}^{2} \, .
 
@@ -413,7 +413,7 @@ def shrink(x, gamma):
 
 
 def SVT(X, gamma, nmodes_max=None, use_rSVD=False):
-    """
+    r"""
     This function implements the proximal operator of the nuclear norm of a
     matrix :math:`X`.
     This operator is also known as the Singular Value Thresholding (SVT) and it
