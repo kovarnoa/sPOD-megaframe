@@ -425,7 +425,7 @@ class ReturnValue:
 # -------------------------------------------- #
 # Distribute the residual of frame
 # -------------------------------------------- #
-def shifted_POD(
+def shifted_POD_J2(
     snapshot_matrix,
     transforms,
     nmodes,
@@ -487,6 +487,8 @@ def shifted_POD(
     it = 0
     rel_err = 1
     rel_err_list = []
+    ranks_hist = [[] for r in range(Nframes)]
+    sum_elapsed = 0
     while rel_err > eps and it < Niter:
         it += 1  # counts the number of iterations in the loop
         #############################
@@ -497,6 +499,7 @@ def shifted_POD(
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
         qtilde = np.zeros_like(q)
+        ranks = []
 
         ###########################
         # 3. Step: update frames
@@ -515,14 +518,27 @@ def shifted_POD(
                     TV_iterations=total_variation_iterations
                 )
             qtilde += trafo.apply(q_frame.build_field())
+            S = q_frame.modal_system["sigma"]
+            U = q_frame.modal_system["U"]
+            VT = q_frame.modal_system["VT"]
+            rank = np.sum(S > 0)
+            ranks.append(rank)
+            ranks_hist[k].append(rank)
         elapsed = time.perf_counter() - t
-        print("it=%d rel_err= %4.4e t_cpu = %2.2f" % (it, rel_err, elapsed))
+        sum_elapsed += elapsed
+        print(
+            "it=%d rel_err= %4.4e t_cpu = %2.2f, ranks_frame ="
+            % (it, rel_err, elapsed),
+            *ranks
+        )
         if (it > 5) and (
             np.abs(rel_err_list[-1] - rel_err_list[-4]) < dtol * abs(rel_err_list[-1])
         ):
             break
-
-    return ReturnValue(qtilde_frames, qtilde, rel_err_list)
+    print("CPU time in total: ", sum_elapsed)
+    return ReturnValue(
+        qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist)
+    )
 
 
 def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=False):
@@ -609,7 +625,7 @@ def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
             q_frame_field = q_frame.build_field()
             stepsize = 1 / Nframes
             q_frame.set_orthonormal_system_svt(
-                q_frame_field + stepsize * res_shifted, stepsize * myparams.lamb
+                q_frame_field + stepsize * res_shifted, stepsize * myparams.lambda_s
             )
             if myparams.total_variation_iterations > 0:
                 q_frame.smoothen_time_amplitudes(
@@ -623,10 +639,18 @@ def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
             ranks_hist[k].append(rank)
             qtilde += trafo.apply(q_frame.build_field())
         if myparams.isError:
-            E = shrink(E + stepsize * res, stepsize * myparams.mu)
-        objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lamb * sum(
-            norm(qk.build_field(), ord="nuc") for qk in qtilde_frames
-        )
+            E = shrink(E + stepsize * res, stepsize * myparams.lambda_E)
+        if myparams.isError:
+            objective = (
+                0.5 * norm(res, ord="fro") ** 2
+                + myparams.lambda_s
+                * sum(norm(qk.build_field(), ord="nuc") for qk in qtilde_frames)
+                + myparams.lambda_E * norm(E, ord=1)
+            )
+        else:
+            objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lambda_s * sum(
+                norm(qk.build_field(), ord="nuc") for qk in qtilde_frames
+            )
         objective_list.append(objective)
         rel_decrease = np.abs((objective_list[-1] - objective_list[-2])) / np.abs(
             objective_list[-1]
@@ -644,11 +668,12 @@ def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
             break
 
     if myparams.isError:
+        print("CPU time in total: ", sum_elapsed)
         return ReturnValue(
             qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist), E
         )
-    av_elpsed = sum_elapsed / it
-    print("CPU time avarege per iteration: ", av_elpsed)
+    # av_elpsed = sum_elapsed / it
+    print("CPU time in total: ", sum_elapsed)
     return ReturnValue(
         qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist)
     )
@@ -739,7 +764,7 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
             qtilde -= trafo.apply(q_frame.build_field())  # remove old
             stepsize = 1 / Nframes
             q_frame.set_orthonormal_system_svt(
-                q_frame_field + stepsize * res_shifted, stepsize * myparams.lamb
+                q_frame_field + stepsize * res_shifted, stepsize * myparams.lambda_s
             )
             if myparams.total_variation_iterations > 0:
                 q_frame.smoothen_time_amplitudes(
@@ -757,10 +782,18 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
             else:
                 res = q - qtilde
         if myparams.isError:
-            E = shrink(E + stepsize * res, stepsize * myparams.mu)
-        objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lamb * sum(
-            norm(qk.build_field(), ord="nuc") for qk in qtilde_frames
-        )
+            E = shrink(E + stepsize * res, stepsize * myparams.lambda_E)
+        if myparams.isError:
+            objective = (
+                0.5 * norm(res, ord="fro") ** 2
+                + myparams.lambda_s
+                * sum(norm(qk.build_field(), ord="nuc") for qk in qtilde_frames)
+                + myparams.lambda_E * norm(E, ord=1)
+            )
+        else:
+            objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lambda_s * sum(
+                norm(qk.build_field(), ord="nuc") for qk in qtilde_frames
+            )
         objective_list.append(objective)
         rel_decrease = np.abs((objective_list[-1] - objective_list[-2])) / np.abs(
             objective_list[-1]
@@ -778,11 +811,12 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
             break
 
     if myparams.isError:
+        print("CPU time in total: ", sum_elapsed)
         return ReturnValue(
             qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist), E
         )
-    av_elpsed = sum_elapsed / it
-    print("CPU time avarege per iteration: ", av_elpsed)
+    # av_elpsed = sum_elapsed / it
+    print("CPU time in total: ", sum_elapsed)
     return ReturnValue(
         qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist)
     )
@@ -857,7 +891,8 @@ def shifted_rPCA(
     visualize=True,
     mu=None,
     lambd=None,
-    dtol=1e-13,
+    dtol=1e-3,
+    isError=False,
 ):
     """
     :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
@@ -914,13 +949,16 @@ def shifted_rPCA(
     res_old = 0
     rel_err_list = []
     ranks_hist = [[] for r in range(Nframes)]
+    # ranks_hist = []
+    sum_elapsed = 0
     while rel_err > eps and it < Niter:
         it += 1  # counts the number of iterations in the loop
         #############################
         # 2.Step: set qtilde to 0
         #############################
         qtilde = np.zeros_like(q)
-        ranks = []
+        # ranks = []
+        ranks = [0, 0]
         ###########################
         # 3. Step: update frames
         ##########################
@@ -939,17 +977,23 @@ def shifted_rPCA(
                 "sigma": S[:rank],
                 "VT": VT[:rank, :],
             }
-            ranks.append(rank)  # list of ranks for each frame
+            # ranks.append(rank)  # list of ranks for each frame
             ranks_hist[k].append(rank)
+            # ranks[k] = rank
+
             qtilde += trafo.apply(q_frame.build_field())
         ###########################
         # 4. Step: update noice term
         ##########################
-        E = shrink(q - qtilde + mu_inv * Y, lambd * mu_inv)
+        if isError:
+            E = shrink(q - qtilde + mu_inv * Y, lambd * mu_inv)
         #############################
         # 5. Step: update multiplier
         #############################
-        res = q - qtilde - E
+        if isError:
+            res = q - qtilde - E
+        else:
+            res = q - qtilde
         Y = Y + mu * res
 
         #############################
@@ -964,6 +1008,7 @@ def shifted_rPCA(
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
         elapsed = time.time() - t
+        sum_elapsed += elapsed
         print(
             "it=%d rel_err= %4.1e norm(dres) = %4.1e norm(Q-Qtilde)/norm(q) =%4.1e norm(E)/norm(q) = %4.1e tcpu = %2.2f, ranks_frame = "
             % (
@@ -982,7 +1027,7 @@ def shifted_rPCA(
         ):
             break
 
-        ranks_hist.append(ranks)
+        # ranks_hist.append(ranks)
 
     qtilde = 0
     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
@@ -990,7 +1035,13 @@ def shifted_rPCA(
         S = frame_p.modal_system["sigma"]
         frame_p.Nmodes = np.sum(S > 0)
 
-    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
+    if isError:
+        print("CPU time in total: ", sum_elapsed)
+        return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
+
+    print("CPU time in total: ", sum_elapsed)
+    print(ranks_hist)
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
 
 
 def save_frames(fname, frames, error_matrix=None):
@@ -1033,6 +1084,6 @@ class sPOD_Param:
     maxit: int = 10000
     isVerbose: bool = True
     isError: bool = False
-    lamb: float = 1e-2
-    mu: float = 1e-2
+    lambda_s: float = 1e-2
+    lambda_E: float = 1e-2
     total_variation_iterations: int = -1
