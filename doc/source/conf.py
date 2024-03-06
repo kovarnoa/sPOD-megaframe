@@ -30,7 +30,7 @@ release = '0.0'
 extensions = ['sphinx.ext.duration',
               'sphinx.ext.doctest',
               'sphinx.ext.autodoc',
-              'sphinx.ext.autosummary']
+              'sphinx.ext.autosummary'] 
 autodoc_member_order = 'bysource'
 
 # Add any paths that contain templates here, relative to this directory.
@@ -72,22 +72,8 @@ numpydoc_attributes_as_param_list = False
 
 
 # Additional stuff for the LaTeX preamble.
-latex_elements = {'preamble': r"""\usepackage{amsmath}\n\usepackage{amssymb}\n"""}
-
-#####################################################
-# add LaTeX macros 
-
-f = open('latex_macros.sty')
-
-try:
-    pngmath_latex_preamble  # check whether this is already defined
-except NameError:
-    pngmath_latex_preamble = ""
-
-for macro in f:
-    # used when building latex and pdf versions
-    latex_elements['preamble'] += macro + '\n'
-    # used when building html version
-    pngmath_latex_preamble += macro + '\n'
-
-#####################################################
+latex_elements = {'preamble': r"""
+\usepackage{amsmath}
+\usepackage{amssymb}
+\input{latex_macros.sty}
+"""}

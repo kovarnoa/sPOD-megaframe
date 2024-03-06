@@ -499,14 +499,11 @@ def shifted_POD_ALM(
     :param visualize: if true: show intermediet results
     :return:
     """
-    assert np.ndim(snapshot_matrix) == 2, (
-        "Are you stephen hawking, trying to solve this problem in 16 dimensions?"
-        "Please give me a snapshotmatrix with every snapshot in one column"
-    )
+    assert np.ndim(snapshot_matrix) == 2, \
+        ("Please give enter a snapshotmatrix with every snapshot in one column")
     if use_rSVD:
-        warn(
-            "Using rSVD to accelarate decomposition procedure may lead to different results, pls check!"
-        )
+        warn("Warning: Using rSVD to accelarate decomposition procedure may lead "
+             "to different results.")
     ###################################
     #        1. Initialization        #
     ###################################
