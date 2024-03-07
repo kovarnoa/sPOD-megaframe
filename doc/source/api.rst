@@ -13,4 +13,5 @@ The Transformation class
 Proximal operator functions
 ---------------------------
 .. autofunction:: sPOD_tools.shrink
+.. autofunction:: sPOD_tools.SVT
                   
