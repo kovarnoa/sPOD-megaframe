@@ -15,17 +15,16 @@ sys.path.append("../lib")
 import numpy as np
 from numpy import exp, mod, meshgrid, cos, sin, exp, pi
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sPOD_algo import (
     shifted_POD_J2,
-    shifted_POD_JFB,
-    shifted_POD_BFB,
+    shifted_POD_FB,
     shifted_POD_ALM,
     sPOD_Param,
     give_interpolation_error,
 )
 from transforms import Transform
 from plot_utils import save_fig
+
 # ============================================================================ #
 
 pic_dir = "../images/"
@@ -46,7 +45,7 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
 
     if case == "crossing_waves":
         nmodes = 1
-        fun = lambda x, t: exp(-((mod((x - c * t), L) - 0.1) ** 2) / sigma**2)+ exp(
+        fun = lambda x, t: exp(-((mod((x - c * t), L) - 0.1) ** 2) / sigma**2) + exp(
             -((mod((x + c * t), L) - 0.9) ** 2) / sigma**2
         )
 
@@ -127,6 +126,8 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
         shift_list = [shifts1, shifts2]
 
     return Q, shift_list, nmodes, L, dx
+
+
 # ============================================================================ #
 
 ##########################################
@@ -135,9 +136,13 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
 plt.close("all")
 case = "multiple_ranks"
 # case = "sine_waves"
-Nx = 500  # number of grid points in x
+Nx = 400  # number of grid points in x
 Nt = Nx // 2  # number of time intervals
 Niter = 500  # number of sPOD iterations
+# method = "ALM"
+method = "BFB"
+# method = "JFB"
+# method = "J2"
 
 fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, case)
 #######################################
@@ -149,22 +154,32 @@ transfos = [
     Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=5),
 ]
 
-interp_err = np.max([give_interpolation_error(fields, transfo)
-                     for transfo in transfos])
+interp_err = np.max([give_interpolation_error(fields, transfo) for transfo in transfos])
 print("interpolation error: {:1.2e}".format(interp_err))
 # %%
 qmat = np.reshape(fields, [Nx, Nt])
-mu = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.01
-lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt)) * 1
-
+mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat)))
+lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
 myparams = sPOD_Param()
-myparams.eps = 1e-16
 myparams.maxit = Niter
-myparams.lambd_s = lambd0
-myparams.lambda_E = mu
-nmodes_param = np.max(nmodes) + 10
-ret = shifted_POD_J2(qmat, transfos, nmodes_param, myparams, True)
-print("Figure 5: ", ret.ranks_hist)
+if method == "ALM":
+    nmodes_param = np.max(nmodes) + 10
+    ret = shifted_POD_ALM(
+        qmat,
+        transfos,
+        myparams,
+        nmodes_max=nmodes_param,
+        use_rSVD=False,
+        mu=mu0,  # adjust for case
+    )
+elif method == "BFB":
+    myparams.lambda_s = 0.3  # adjust for case
+    ret = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="BFB")
+elif method == "JFB":
+    myparams.lambda_s = 0.4  # adjust for case
+    ret = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="JFB")
+elif method == "J2":
+    ret = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
 sPOD_frames, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
 qf = [
     np.squeeze(np.reshape(transfo.apply(frame.build_field()), data_shape))
@@ -239,7 +254,7 @@ transfos = [
     Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=3),
 ]
 mu = Nx * Nt / (4 * np.sum(np.abs(qmat)))
-lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt)) * 1000
+lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
 myparams = sPOD_Param()
 myparams.eps = 1e-16
 myparams.maxit = Niter
@@ -247,8 +262,7 @@ myparams.lambd_s = lambd0
 myparams.lambda_E = mu
 nmodes_param = np.max(nmodes) + 50
 
-ret = shifted_POD_JFB(qmat, transfos, nmodes_param, myparams)
-print("Figure 9a: ", ret.ranks_hist)
+ret = shifted_POD_FB(qmat, transfos, nmodes_param, myparams, method="JFB")
 
 xlims = [-1, Niter]
 plt.close(11)
@@ -358,10 +372,11 @@ ret_E = shifted_POD_ALM(
     lambd=lambd0,
     mu=mu,
 )
-iter_ranks = [i for i in range(len(ret_E.ranks_hist[0])) \
-              if ret_E.ranks_hist[0][i] == nmodes[0] and \
-              ret_E.ranks_hist[1][i] == nmodes[1]][0] + 1
-print("Picture 10bb: ", ret_E.ranks_hist, iter_ranks)
+iter_ranks = [
+    i
+    for i in range(len(ret_E.ranks_hist[0]))
+    if ret_E.ranks_hist[0][i] == nmodes[0] and ret_E.ranks_hist[1][i] == nmodes[1]
+][0] + 1
 ret = shifted_POD_ALM(
     qmat,
     transfos,
@@ -372,7 +387,6 @@ ret = shifted_POD_ALM(
     lambd=lambd0 * 1000,
     mu=mu,
 )
-print("Picture 10bb: ", ret.ranks_hist)
 
 
 xlims = [-1, Niter]
@@ -423,7 +437,7 @@ plt.legend()
 ##########################################
 # facecolors='none' first we plot the resulting field
 Niter = 500
-ret_E = shifted_rPCA(
+ret_E = shifted_POD_ALM(
     qmat,
     transfos,
     nmodes_max=np.max(nmodes) + 50,
@@ -518,9 +532,9 @@ for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]
         Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=[5, 5]),
     ]
 
-    ret = shifted_POD_ADM(
+    ret = shifted_POD_ALM(
         qmat,
-        tranfos,
+        transfos,
         nmodes_max=np.max(nmodes) + 10,
         eps=1e-16,
         Niter=Niter,
@@ -528,7 +542,6 @@ for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]
         lambd=lambd0,
         mu=mu,
     )
-    print("Picture 9b: ", ret.ranks_hist)
 
     ret_list.append(ret)
     h = ax.semilogy(
@@ -548,7 +561,7 @@ for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]
     # plot_list.append(h)
 # sPOD results           Xgrid - 0.1 * L) / w)
 
-ret = shifted_POD(qmat, transfos, nmodes=nmodes, eps=1e-16, Niter=Niter)
+ret = shifted_POD_J2(qmat, transfos, nmodes=nmodes, eps=1e-16, Niter=Niter)
 # %
 h = ax.semilogy(
     np.arange(0, np.size(ret.rel_err_hist)),

@@ -12,15 +12,14 @@ with the robust shifter proper orthogonal decomposition (sPOD).
 # ============================================================================ #
 import os
 import time
-import pickle
 
 import numpy as np
-import matplotlib.pyplot as plt
-from numpy import exp, meshgrid, mod, size, interp, where, diag, reshape, asarray
-from numpy.linalg import lstsq, norm, svd
+from numpy import reshape
+from numpy.linalg import norm
 from dataclasses import dataclass
 from warnings import warn
-from sPOD_tools import Frame, SVT, trunc_svd
+from sPOD_tools import Frame, SVT, trunc_svd, shrink
+
 # ============================================================================ #
 
 
@@ -31,32 +30,35 @@ class ReturnValue:
     """
     This class inherits all return values of the shifted POD routines
     """
-    def __init__(self,
-                 frames,
-                 approximation,
-                 relaltive_error_hist=None,
-                 ranks=None,
-                 ranks_hist=None,
-                 error_matrix=None):
+
+    def __init__(
+        self,
+        frames,
+        approximation,
+        relaltive_error_hist=None,
+        ranks=None,
+        ranks_hist=None,
+        error_matrix=None,
+    ):
         """
         Constructor.
 
-        :param frames: 
-        :type frames: 
+        :param frames:
+        :type frames:
 
-        :param approximation: 
-        :type approximation: 
+        :param approximation:
+        :type approximation:
 
-        :param relative_err_hist: 
+        :param relative_err_hist:
         :type relative_err_hist: , optional
 
-        :param ranks: 
+        :param ranks:
         :type ranks: , optional
 
-        :param ranks_hist: 
+        :param ranks_hist:
         :type ranks_hist: , optional
 
-        :param error_matrix: 
+        :param error_matrix:
         :type error_matrix: , optional
         """
         self.frames = frames  # List of all frames
@@ -69,6 +71,8 @@ class ReturnValue:
             self.ranks = ranks
         if ranks_hist is not None:
             self.ranks_hist = ranks_hist
+
+
 # ============================================================================ #
 
 
@@ -107,12 +111,15 @@ def shifted_POD_J2(
     :rtype: :class:`ReturnValue`
     """
 
-    assert np.ndim(snapshot_matrix) == 2, \
-        ("Please give enter a snapshotmatrix with every snapshot in one column")
+    assert (
+        np.ndim(snapshot_matrix) == 2
+    ), "Please give enter a snapshotmatrix with every snapshot in one column"
     if use_rSVD:
-        warn("Warning: Using rSVD to accelarate decomposition procedure may lead "
-             "to different results.")
-        
+        warn(
+            "Warning: Using rSVD to accelarate decomposition procedure may lead "
+            "to different results."
+        )
+
     ###################################
     #        1. Initialization        #
     ###################################
@@ -122,8 +129,7 @@ def shifted_POD_J2(
     if np.size(nmodes) != Nframes:
         nmodes = list([nmodes]) * Nframes
     qtilde_frames = [
-        Frame(transfo, qtilde, Nmodes=nmodes[k])
-        for k, transfo in enumerate(transforms)
+        Frame(transfo, qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
     ]
     norm_q = norm(reshape(q, -1))
 
@@ -132,8 +138,11 @@ def shifted_POD_J2(
     r_ = np.sum(nmodes)
     (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=False)
     err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
-    print("Relative error using a truncated SVD with {:d} modes:{:4.4e}"
-          .format(r_, err_svd))
+    print(
+        "Relative error using a truncated SVD with {:d} modes:{:4.4e}".format(
+            r_, err_svd
+        )
+    )
     ###########################
 
     current_it = 0
@@ -167,7 +176,7 @@ def shifted_POD_J2(
             )
             if myparams.total_variation_iterations > 0:
                 q_frame.smoothen_time_amplitudes(
-                    TV_iterations=total_variation_iterations
+                    TV_iterations=myparams.total_variation_iterations
                 )
             qtilde += trafo.apply(q_frame.build_field())
             S = q_frame.modal_system["sigma"]
@@ -184,16 +193,22 @@ def shifted_POD_J2(
             *ranks
         )
         if (current_it > 5) and (
-            np.abs(rel_err_list[-1] - rel_err_list[-4]) < myparams.gtol * abs(rel_err_list[-1])
+            np.abs(rel_err_list[-1] - rel_err_list[-4])
+            < myparams.gtol * abs(rel_err_list[-1])
         ):
             break
     print("CPU time in total: ", sum_elapsed)
-    return ReturnValue(
-        qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist)
-    )
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
 
 
-def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=False):
+def shifted_POD_FB(
+    snapshot_matrix,
+    transforms,
+    nmodes,
+    myparams,
+    use_rSVD=False,
+    method="BFB",
+):
     """
     This function implements the Joint Forward-Backward method (JFB).
 
@@ -216,15 +231,21 @@ def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
                      the SVD.
     :type use_rSVD: bool, optional
 
+    :param method: Method to use for the algorithm. Options are "BFB" (Backward
+                    Forward Backward) and "FB" (Forward Backward).
+
     :return:
     :rtype: :class:`ReturnValue`
     """
 
-    assert np.ndim(snapshot_matrix) == 2, \
-        ("Please give enter a snapshotmatrix with every snapshot in one column")
+    assert (
+        np.ndim(snapshot_matrix) == 2
+    ), "Please give enter a snapshotmatrix with every snapshot in one column"
     if use_rSVD:
-        warn("Warning: Using rSVD to accelarate decomposition procedure may lead "
-             "to different results.")
+        warn(
+            "Warning: Using rSVD to accelarate decomposition procedure may lead "
+            "to different results."
+        )
 
     ###################################
     #        1. Initialization        #
@@ -237,8 +258,7 @@ def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
     if np.size(nmodes) != Nframes:
         nmodes = list([nmodes]) * Nframes
     qtilde_frames = [
-        Frame(transfo, qtilde, Nmodes=nmodes[k])
-        for k, transfo in enumerate(transforms)
+        Frame(transfo, qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
     ]
     norm_q = norm(reshape(q, -1))
 
@@ -247,145 +267,11 @@ def shifted_POD_JFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
     r_ = np.sum(nmodes)
     (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=False)
     err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
-    print("Relative error using a truncated SVD with {:d} modes:{:4.4e}"
-          .format(r_, err_svd))
-    ###########################
-
-    current_it = 0
-    objective_0 = 0.5 * norm(q, ord="fro") ** 2
-    objective_list = [objective_0]
-    rel_decrease = 1
-    rel_decrease_list = [1]
-    rel_err_list = []
-    ranks_hist = [[] for r in range(Nframes)]
-    sum_elapsed = 0
-    while rel_decrease > myparams.eps and current_it < myparams.maxit:
-        current_it += 1
-        ###################################
-        #      2. Calculate residual      #
-        ###################################
-        if myparams.isError:
-            res = q - qtilde - E
-        else:
-            res = q - qtilde
-        norm_res = norm(reshape(res, -1))
-        rel_err = norm_res / norm_q
-        rel_err_list.append(rel_err)
-        qtilde = np.zeros_like(q)
-        ranks = []
-
-        ###################################
-        #      3. Update the frames       #
-        ###################################
-        t = time.perf_counter()
-        for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
-            res_shifted = trafo.reverse(res)
-            q_frame_field = q_frame.build_field()
-            stepsize = 1 / Nframes
-            q_frame.set_orthonormal_system_svt(
-                q_frame_field + stepsize * res_shifted, stepsize * myparams.lambda_s
-            )
-            if myparams.total_variation_iterations > 0:
-                q_frame.smoothen_time_amplitudes(
-                    TV_iterations=myparams.total_variation_iterations
-                )
-            S = q_frame.modal_system["sigma"]
-            U = q_frame.modal_system["U"]
-            VT = q_frame.modal_system["VT"]
-            rank = np.sum(S > 0)
-            ranks.append(rank)
-            ranks_hist[k].append(rank)
-            qtilde += trafo.apply(q_frame.build_field())
-        if myparams.isError:
-            E = shrink(E + stepsize * res, stepsize * myparams.lambda_E)
-            objective = (
-                0.5 * norm(res, ord="fro") ** 2
-                + myparams.lambda_s
-                * sum(norm(qk.build_field(), ord="nuc") for qk in qtilde_frames)
-                + myparams.lambda_E * norm(E, ord=1)
-            )
-        else:
-            objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lambda_s * sum(
-                norm(qk.build_field(), ord="nuc") for qk in qtilde_frames
-            )
-        objective_list.append(objective)
-        rel_decrease = np.abs((objective_list[-1] - objective_list[-2])) / np.abs(
-            objective_list[-1]
+    print(
+        "Relative error using a truncated SVD with {:d} modes:{:4.4e}".format(
+            r_, err_svd
         )
-        rel_decrease_list.append(rel_decrease)
-        elapsed = time.perf_counter() - t
-        sum_elapsed += elapsed
-        if myparams.isVerbose:
-            print("Iter {:4d} / {:d} | Rel_err= {:4.4e} | t_cpu = {:2.2f}s"
-                  .format(current_it, myparams.maxiter, rel_err, elapsed))
-        if (current_it > 5) and (rel_decrease < myparams.gtol):
-            break
-
-    if myparams.isError:
-        print("CPU time in total: ", sum_elapsed)
-        return ReturnValue(
-            qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist), E
-        )
-    print("CPU time in total: ", sum_elapsed)
-    return ReturnValue(
-        qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist)
     )
-
-
-def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=False):
-    """
-    This function implements the Block-Coordinate Descent Forward-Backward method (BFB).
-
-    :param snapshot_matrix: Snapshot matrix with with dimensions :math:`M \times N`,
-                            :math:`N` is the number of snapshots (i.e. time stamps)
-                            and :math:`M` is the number of number of spatial samples
-                            (i.e. the ODE dimension).
-    :type snapshot_matrix: :class:`numpy.ndarray` (2-dimensional)
-
-    :param transforms: List of transformations associated with the co-moving fields.
-    :type transforms: List[Transform]
-
-    :param nmodes: Number of modes to use in each frame
-    :type nmodes: integer
-
-    :param myparams: Parameters for the JFB algorithm
-    :type myparams: sPOD_Param
-
-    :param use_rSVD: Boolean set to True in order to use randomized version of the SVD.
-    :type use_rSVD: bool, optional
-
-    :return:
-    :rtype: :class:`ReturnValue`
-    """
-    
-    assert np.ndim(snapshot_matrix) == 2, \
-        ("Please give enter a snapshotmatrix with every snapshot in one column")
-    if use_rSVD:
-        warn("Warning: Using rSVD to accelarate decomposition procedure may lead "
-             "to different results.")
-
-    ###################################
-    #        1. Initialization        #
-    ###################################
-    q = snapshot_matrix
-    qtilde = np.zeros_like(q)
-    if myparams.isError:
-        E = np.zeros_like(snapshot_matrix)
-    Nframes = len(transforms)
-    if np.size(nmodes) != Nframes:
-        nmodes = list([nmodes]) * Nframes
-    qtilde_frames = [
-        Frame(transfo, qtilde, Nmodes=nmodes[k])
-        for k, transfo in enumerate(transforms)
-    ]
-    norm_q = norm(reshape(q, -1))
-
-    ###########################
-    # Error of the truncated SVD
-    r_ = np.sum(nmodes)
-    (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=False)
-    err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
-    print("rel-error using svd with %d modes:%4.4e" % (r_, err_svd))
     ###########################
 
     current_it = 0
@@ -408,7 +294,8 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
         norm_res = norm(reshape(res, -1))
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
-        # qtilde = np.zeros_like(q)
+        if method == "JFB":
+            qtilde = np.zeros_like(q)
         ranks = []
 
         ###################################
@@ -418,7 +305,8 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
         for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
             res_shifted = trafo.reverse(res)
             q_frame_field = q_frame.build_field()
-            qtilde -= trafo.apply(q_frame.build_field())  # remove old
+            if method == "BFB":
+                qtilde -= trafo.apply(q_frame.build_field())
             stepsize = 1 / Nframes
             q_frame.set_orthonormal_system_svt(
                 q_frame_field + stepsize * res_shifted, stepsize * myparams.lambda_s
@@ -428,19 +316,17 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
                     TV_iterations=myparams.total_variation_iterations
                 )
             S = q_frame.modal_system["sigma"]
-            U = q_frame.modal_system["U"]
-            VT = q_frame.modal_system["VT"]
             rank = np.sum(S > 0)
             ranks.append(rank)
             ranks_hist[k].append(rank)
             qtilde += trafo.apply(q_frame.build_field())
+        if method == "BFB":
             if myparams.isError:
                 res = q - qtilde - E
             else:
                 res = q - qtilde
         if myparams.isError:
             E = shrink(E + stepsize * res, stepsize * myparams.lambda_E)
-        if myparams.isError:
             objective = (
                 0.5 * norm(res, ord="fro") ** 2
                 + myparams.lambda_s
@@ -459,33 +345,29 @@ def shifted_POD_BFB(snapshot_matrix, transforms, nmodes, myparams, use_rSVD=Fals
         elapsed = time.perf_counter() - t
         sum_elapsed += elapsed
         if myparams.isVerbose:
-            print("Iter {:4d} / {:d} | Rel_error= {:4.4e} | t_cpu = {:2.2f}s"
-                  .format(current_it, myparams.maxiter, rel_err, elapsed))
+            print(
+                "Iter {:4d} / {:d} | Rel_err= {:4.4e} | t_cpu = {:2.2f}s | "
+                "ranks_frame = ".format(current_it, myparams.maxit, rel_err, elapsed),
+                *ranks
+            )
         if (current_it > 5) and (rel_decrease < myparams.gtol):
             break
 
     if myparams.isError:
         print("CPU time in total: ", sum_elapsed)
-        return ReturnValue(
-            qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist), E
-        )
+        return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
     print("CPU time in total: ", sum_elapsed)
-    return ReturnValue(
-        qtilde_frames, qtilde, rel_err_list, ranks, np.asarray(ranks_hist)
-    )
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
 
 
 def shifted_POD_ALM(
     snapshot_matrix,
     transforms,
+    myparams,
     nmodes_max=None,
-    eps=1e-16,
-    Niter=1,
     use_rSVD=False,
-    visualize=True,
     mu=None,
     lambd=None,
-    dtol=1e-3,
     isError=False,
 ):
     """
@@ -522,36 +404,30 @@ def shifted_POD_ALM(
     else:
         nmodes = [nmodes_max]
     qtilde_frames = [
-        Frame(transfo, qtilde, Nmodes=nmodes[k])
-        for k, transfo in enumerate(transforms)
+        Frame(transfo, qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
     ]
 
     q = snapshot_matrix.copy()
-    # Y = q.copy()
     Y = np.zeros_like(snapshot_matrix)
     norm_q = norm(reshape(q, -1))
     it = 0
     M, N = np.shape(q)
-    # mu = 0.5/norm(q,ord="fro")**2*100
     if mu is None:
         mu = N * M / (4 * np.sum(np.abs(q)))
     if lambd is None:
         lambd = 1 / np.sqrt(np.maximum(M, N))
-    thresh = 1e-7 * norm_q
     mu_inv = 1 / mu
     rel_err = 1
     res_old = 0
     rel_err_list = []
     ranks_hist = [[] for r in range(Nframes)]
-    # ranks_hist = []
     sum_elapsed = 0
-    while rel_err > eps and it < Niter:
+    while rel_err > myparams.eps and it < myparams.maxit:
         it += 1  # counts the number of iterations in the loop
         ###################################
         #       2. Set qtilde to 0        #
         ###################################
         qtilde = np.zeros_like(q)
-        # ranks = []
         ranks = [0, 0]
         ###################################
         #      3. Update the frames       #
@@ -571,9 +447,8 @@ def shifted_POD_ALM(
                 "sigma": S[:rank],
                 "VT": VT[:rank, :],
             }
-            # ranks.append(rank)  # list of ranks for each frame
             ranks_hist[k].append(rank)
-            # ranks[k] = rank
+            ranks[k] = rank
 
             qtilde += trafo.apply(q_frame.build_field())
         ###################################
@@ -605,24 +480,25 @@ def shifted_POD_ALM(
         sum_elapsed += elapsed
 
         if myparams.isVerbose:
-            print("Iter {:4d} / {:d} | Rel_err= {:4.4e} | norm(dres) = {:4.1e} | "
-                  "norm(Q-Qtilde)/norm(Q) = {:4.1} | t_cpu = {:2.2f}s | "
-                  "ranks_frame = "
-                  .format(it, myparams.maxiter,
-                          rel_err,
-                          mu * norm_dres / norm_q,
-                          rel_err_without_noise,
-                          norm(reshape(E, -1)) / norm_q,
-                          elapsed,
-                          ),
-                  *ranks)
+            print(
+                "Iter {:4d} / {:d} | Rel_err= {:4.4e} | norm(dres) = {:4.1e} | "
+                "norm(Q-Qtilde)/norm(Q) = {:4.1} | t_cpu = {:2.2f}s | "
+                "ranks_frame = ".format(
+                    it,
+                    myparams.maxit,
+                    rel_err,
+                    mu * norm_dres / norm_q,
+                    rel_err_without_noise,
+                    norm(reshape(E, -1)) / norm_q,
+                    elapsed,
+                ),
+                *ranks
+            )
 
-        if it > 5 and \
-           np.abs(rel_err_list[-1] - rel_err_list[-4]) \
-           < dtol * abs(rel_err_list[-1]):
+        if it > 5 and np.abs(rel_err_list[-1] - rel_err_list[-4]) < myparams.gtol * abs(
+            rel_err_list[-1]
+        ):
             break
-
-        # ranks_hist.append(ranks)
 
     qtilde = 0
     for p, (trafo_p, frame_p) in enumerate(zip(transforms, qtilde_frames)):
@@ -635,7 +511,6 @@ def shifted_POD_ALM(
         return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
 
     print("CPU time in total: ", sum_elapsed)
-    print(ranks_hist)
     return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
 
 
@@ -684,21 +559,24 @@ def give_interpolation_error(snapshot_data, transfo):
     .. math::
 
         err = \| Q - T^(-1)[T[Q]] \|_F^2 / \| Q \|_F^2
-    
+
     :param snapshot_data: Snapshot matrix.
     :type snapshot_data: :class:`numpy.ndarray` (2-dimensional)
-    
+
     :param transfo:
     :type transfo: :class:`Transform`
-    
+
     :return: Interpolation error.
     :rtype: float
     """
     from numpy import reshape
 
     Q = reshape(snapshot_data, [-1, snapshot_data.shape[-1]])
-    rel_err = norm(Q - transfo.apply(transfo.reverse(Q)), ord="fro") / norm(Q, ord="fro")
+    rel_err = norm(Q - transfo.apply(transfo.reverse(Q)), ord="fro") / norm(
+        Q, ord="fro"
+    )
     return rel_err / 2
+
 
 def save_frames(fname, frames, error_matrix=None):
     fname_base, old_ext = os.path.splitext(fname)
@@ -731,6 +609,8 @@ def load_frames(fname, Nframes, load_ErrMat=False):
         return frame_list, E
     else:
         return frame_list
+
+
 # ============================================================================ #
 
 
@@ -756,6 +636,7 @@ class sPOD_Param:
                                            algorithm that computes the proximal
                                            operator of the total variation (TV).
     """
+
     gtol: float = 1e-5
     eps: float = 1e-16
     maxit: int = 10000
@@ -764,4 +645,6 @@ class sPOD_Param:
     lambda_s: float = 1e-2
     lambda_E: float = 1e-2
     total_variation_iterations: int = -1
+
+
 # ============================================================================ #

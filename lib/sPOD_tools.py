@@ -10,16 +10,15 @@ decomposition (SPOD).
 # ============================================================================ #
 #                              MODULES IMPORTATION                             #
 # ============================================================================ #
-import os
-import time
 import pickle
 
 import numpy as np
 import matplotlib.pyplot as plt
-from numpy import exp, meshgrid, mod, size, interp, where, diag, reshape, asarray
+from numpy import reshape
 from sklearn.utils.extmath import randomized_svd
-from numpy.linalg import lstsq, norm, svd
-from matplotlib.pyplot import semilogy, title, xlabel, ylabel
+from numpy.linalg import norm, svd
+from matplotlib.pyplot import semilogy, xlabel, ylabel
+
 # ============================================================================ #
 
 
@@ -92,7 +91,7 @@ class Frame:
             if not np.all(field == None):
                 field = self.transfo.reverse(field)
                 self.set_orthonormal_system(field)
-            
+
     def save(self, fname):
         """
         Method that serializes and saves the current frame in a file using
@@ -193,7 +192,7 @@ class Frame:
             u = u[:, :rank]
             s = s[:rank]
             vh = vh[:rank, :]
-        
+
         return np.dot(u * s, vh)
 
     def plot_singular_values(self):
@@ -247,7 +246,7 @@ class Frame:
         :return: The sum of the two frames.
         :rtype: Frame
         """
-        if isinstance(other, frame):
+        if isinstance(other, Frame):
             new_field = self.build_field() + other.build_field()
         elif np.shape(other) == self.data_shape:
             new_field = self.build_field() + other
@@ -256,6 +255,8 @@ class Frame:
         self.set_orthonormal_system(new_field)
 
         return self
+
+
 # ============================================================================ #
 
 
@@ -347,6 +348,8 @@ def reconstruction_error(snapshotmatrix, frames, transfos=None, max_ranks=None):
                 error_matrix[dof, ir] = r
 
     return error_matrix
+
+
 # ============================================================================ #
 
 
@@ -381,6 +384,8 @@ def shift_velocities(dx, dt, fields, n_velocities, v_min, v_max, v_step, n_modes
         c_shifts.append(v_shifts[max_index_x])
 
     return c_shifts
+
+
 # ============================================================================ #
 
 
@@ -470,6 +475,8 @@ def trunc_svd(X, nmodes_max=None, use_rSVD=False):
     else:
         u, s, vt = svd(X, full_matrices=False)
     return (u, s, vt)
+
+
 # ============================================================================ #
 
 
@@ -493,4 +500,6 @@ def update_and_reduce_modes(Xtilde_frames, alpha, X_coef_shift, Nmodes_reduce):
         frame.Nmodes = Nmodes_reduce  # Reduce to the desired number of modes
         [U, S, VT] = trunc_svd(Xnew_k, Nmodes_reduce)
         frame.modal_system = {"U": U, "sigma": S, "VT": VT}
+
+
 # ============================================================================ #
