@@ -1,13 +1,13 @@
+# -*- coding: utf-8 -*-
 """
 This code is taken from:
 
 https://notebooks.githubusercontent.com/view/ipynb?browser=chrome&color_mode=auto&commit=767df9ace960fde67515614f8739db9cf04d24b0&device=unknown&enc_url=68747470733a2f2f7261772e67697468756275736572636f6e74656e742e636f6d2f7a6e61682f6e6f7465626f6f6b732f373637646639616365393630666465363735313536313466383733396462396366303464323462302f54565f64656e6f6973652e6970796e62&logged_in=false&nwo=znah%2Fnotebooks&path=TV_denoise.ipynb&platform=android&repository_id=7451965&repository_type=Repository&version=96
 
 """
-
-############################
-# import MODULES here:
-############################
+# ============================================================================ #
+#                              MODULES IMPORTATION                             #
+# ============================================================================ #
 import pickle
 
 import numpy as np
@@ -17,22 +17,19 @@ from numpy import exp, meshgrid, mod,size, interp, where, diag, reshape, \
                     asarray
 from sklearn.utils.extmath import randomized_svd
 from numpy.linalg import lstsq, norm, svd
-#from scipy.linalg import svd
 import os
 import time
-from matplotlib.pyplot import   subplot, plot, pcolor, semilogy, title, \
-                                xlabel, ylabel, figure
 from warnings import warn
+# ============================================================================ #
+
 def derivative(N, h):
     stencil = np.asarray([ -1, 1])
     diag0 = np.ones(N)
-    diag0[-1] = 0 # fix boundary condition
+    diag0[-1] = 0  # fix boundary condition
     diags = [stencil[0]*diag0,stencil[1]*np.ones(N-1)]
     offsets = np.asarray([0,1])
     Dx = sp.diags(diags, offsets) / h
     return Dx
-
-
 
 # little auxiliary routine
 def anorm(x):

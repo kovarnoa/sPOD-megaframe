@@ -19,7 +19,6 @@ from numpy.linalg import norm
 from dataclasses import dataclass
 from warnings import warn
 from sPOD_tools import Frame, SVT, trunc_svd, shrink
-
 # ============================================================================ #
 
 

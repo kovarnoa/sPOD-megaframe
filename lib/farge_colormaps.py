@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 Created on Fri May 18 19:42:20 2018
@@ -7,26 +6,27 @@ Created on Fri May 18 19:42:20 2018
 """
 import numpy as np
 
-def farge_colormap_multi(taille=256, limite_faible_fort=0.3, etalement_du_zero=0.02, blackmargin=0.25, type='vorticity', return_vctor=False):
-    import numpy as np
+def farge_colormap_multi(taille=256, limite_faible_fort=0.3,
+                         etalement_du_zero=0.02, blackmargin=0.25,
+                         stype='vorticity', return_vctor=False):
     import matplotlib
 
-    if type is 'vorticity':
+    if stype == 'vorticity':
         color1=[0.0, 0.5, 1.0]  #light blue
         color2=[1.0, 1.0, 1.0]  #white
         color3=[1.0, 0.5, 0.5]  #light red
         zero=[1.0, 222.0/255.0, 17.0/255.0]
-    elif type is 'pressure':
+    elif stype == 'pressure':
         color1=[0.0, 0.5, 1.0];
         color2=[1.0, 1.0, 1.0];
         color3=[1.0, 1.0, 0.0];
         zero  =[1.0, 0.0, 0.0];
-    elif type is 'streamfunction':
+    elif stype == 'streamfunction':
         color1=[0.5, 0.0, 1.0];
         color2=[1.0, 1.0, 1.0];
         color3=[1.0, 0.8, 0.0];
         zero=[0.0, 1.0, 0.5];
-    elif type is 'velocity':
+    elif stype == 'velocity':
         color1=[1.0, 1.0, 0.0];
         color2=[1.0, 1.0, 1.0];
         color3=[1.0, 0.5, 0.5];

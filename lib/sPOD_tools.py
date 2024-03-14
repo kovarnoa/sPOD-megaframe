@@ -5,7 +5,7 @@ Created on Thu Nov 29 09:19:19 2018
 @author: Philipp Krah
 
 This package provides all the infrastructure for the shifted propper orthogonal
-decomposition (SPOD).
+decomposition (sPOD).
 """
 # ============================================================================ #
 #                              MODULES IMPORTATION                             #
@@ -18,7 +18,6 @@ from numpy import reshape
 from sklearn.utils.extmath import randomized_svd
 from numpy.linalg import norm, svd
 from matplotlib.pyplot import semilogy, xlabel, ylabel
-
 # ============================================================================ #
 
 
@@ -27,7 +26,7 @@ from matplotlib.pyplot import semilogy, xlabel, ylabel
 # ============================================================================ #
 class Frame:
     """
-    This class implemented a frame whose definition is motivated by physics:
+    This class implements a frame whose definition is motivated by physics:
     All points are in a inertial system (a.k.a. a frame), if they can be
     transformed to the rest frame by a Galilean transformation.
     A frame is represented by an orthogonal system.

@@ -1,21 +1,24 @@
+# -*- coding: utf-8 -*-
+# ============================================================================ #
+#                              MODULES IMPORTATION                             #
+# ============================================================================ #
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib import animation
 from farge_colormaps import farge_colormap_multi
 from IPython.display import HTML
+# ============================================================================ #
 
-fc = farge_colormap_multi( etalement_du_zero=0.2, limite_faible_fort=0.5)
+
+fc = farge_colormap_multi(etalement_du_zero=0.2, limite_faible_fort=0.5)
 
 from matplotlib import rc
 rc('font',**{'family':'serif','serif':['Helvetica'],'size'   : 12})
-#
+
 rc('text', usetex=True)
 
 pic_dir = "../imgs"
 plt.close("all")
-
-
-
 
 def show_animation(q, Xgrid=None, cycles=1, frequency = 1, figure_number = None, cmap = fc, vmin = None,vmax=None,
                    save_path=None, use_html=True):
