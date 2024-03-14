@@ -230,18 +230,18 @@ class Transform:
         """
         input_shape = np.shape(field)
         field = reshape(field,self.data_shape)
-        if self.trafo_type=="shift":
+        if self.transfo_type=="shift":
             ftrans = self.shift(field, self.shifts_pos)
-        elif self.trafo_type == "rotation":
+        elif self.transfo_type == "rotation":
             ftrans = self.rotate(field, self.rotations)
-        elif self.trafo_type == "shiftRot":
+        elif self.transfo_type == "shiftRot":
             # ~ auxField = self.shift(field,self.shiftMatrices_pos)         #shift to origin
             field = self.rotate(field,self.rotations)                 #rotate and return
             ftrans = self.shift(field,self.shifts_pos)                   #shift to origin
-        elif self.trafo_type == "identity":
+        elif self.transfo_type == "identity":
             ftrans = field
         else:
-            print("Transformation type: {} not known".format(self.trafo_type))
+            print("Transformation type: {} not known".format(self.transfo_type))
 
         return reshape(ftrans, input_shape)
 
@@ -258,19 +258,19 @@ class Transform:
         """
         input_shape = np.shape(field)
         field = reshape(field, self.data_shape)
-        if self.trafo_type=="shift":
+        if self.transfo_type=="shift":
             ftrans = self.shift(field,self.shifts_neg)
-        elif self.trafo_type == "rotation":
+        elif self.transfo_type == "rotation":
             ftrans = self.rotate(field, -self.rotations)
-        elif self.trafo_type == "shiftRot":
+        elif self.transfo_type == "shiftRot":
             field = self.shift(field,self.shifts_neg)                   #shift back and return
             ftrans = self.rotate(field,-self.rotations)               #rotate back
             # ~ return self.shift(auxField,self.shiftMatrices_neg)          #shift back and return
 
-        elif self.trafo_type == "identity":
+        elif self.transfo_type == "identity":
             ftrans = field
         else:
-            print("Transformation type: %s not known"%self.trafo_type)
+            print("Transformation type: %s not known"%self.transfo_type)
 
         return reshape(ftrans, input_shape)
 

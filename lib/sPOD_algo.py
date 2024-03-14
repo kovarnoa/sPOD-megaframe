@@ -19,6 +19,7 @@ from numpy.linalg import norm
 from dataclasses import dataclass
 from warnings import warn
 from sPOD_tools import Frame, SVT, trunc_svd, shrink
+
 # ============================================================================ #
 
 
@@ -319,11 +320,11 @@ def shifted_POD_FB(
             ranks.append(rank)
             ranks_hist[k].append(rank)
             qtilde += trafo.apply(q_frame.build_field())
-        if method == "BFB":
-            if myparams.isError:
-                res = q - qtilde - E
-            else:
-                res = q - qtilde
+            if method == "BFB":
+                if myparams.isError:
+                    res = q - qtilde - E
+                else:
+                    res = q - qtilde
         if myparams.isError:
             E = shrink(E + stepsize * res, stepsize * myparams.lambda_E)
             objective = (
@@ -380,11 +381,14 @@ def shifted_POD_ALM(
     :param visualize: if true: show intermediet results
     :return:
     """
-    assert np.ndim(snapshot_matrix) == 2, \
-        ("Please give enter a snapshotmatrix with every snapshot in one column")
+    assert (
+        np.ndim(snapshot_matrix) == 2
+    ), "Please give enter a snapshotmatrix with every snapshot in one column"
     if use_rSVD:
-        warn("Warning: Using rSVD to accelarate decomposition procedure may lead "
-             "to different results.")
+        warn(
+            "Warning: Using rSVD to accelarate decomposition procedure may lead "
+            "to different results."
+        )
     ###################################
     #        1. Initialization        #
     ###################################

@@ -139,8 +139,8 @@ case = "multiple_ranks"
 Nx = 400  # number of grid points in x
 Nt = Nx // 2  # number of time intervals
 Niter = 500  # number of sPOD iterations
-# method = "ALM"
-method = "BFB"
+method = "ALM"
+# method = "BFB"
 # method = "JFB"
 # method = "J2"
 
@@ -254,15 +254,29 @@ transfos = [
     Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=3),
 ]
 mu = Nx * Nt / (4 * np.sum(np.abs(qmat)))
-lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
 myparams = sPOD_Param()
-myparams.eps = 1e-16
 myparams.maxit = Niter
-myparams.lambd_s = lambd0
 myparams.lambda_E = mu
-nmodes_param = np.max(nmodes) + 50
 
-ret = shifted_POD_FB(qmat, transfos, nmodes_param, myparams, method="JFB")
+if method == "ALM":
+    nmodes_param = np.max(nmodes) + 10
+    myparams.lambd_s = lambd0
+    ret = shifted_POD_ALM(
+        qmat,
+        transfos,
+        myparams,
+        nmodes_max=nmodes_param,
+        use_rSVD=False,
+        mu=mu,  # adjust for case
+    )
+elif method == "BFB":
+    myparams.lambda_s = 0.3  # adjust for case
+    ret = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="BFB")
+elif method == "JFB":
+    myparams.lambda_s = 0.4  # adjust for case
+    ret = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="JFB")
+elif method == "J2":
+    ret = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
 
 xlims = [-1, Niter]
 plt.close(11)
@@ -360,33 +374,33 @@ transfos = [
     Transform(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=5),
     Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=5),
 ]
-mu = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
-lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
-ret_E = shifted_POD_ALM(
-    qmat,
-    transfos,
-    nmodes_max=np.max(nmodes) + 50,
-    eps=1e-16,
-    Niter=Niter,
-    use_rSVD=False,
-    lambd=lambd0,
-    mu=mu,
-)
-iter_ranks = [
-    i
-    for i in range(len(ret_E.ranks_hist[0]))
-    if ret_E.ranks_hist[0][i] == nmodes[0] and ret_E.ranks_hist[1][i] == nmodes[1]
-][0] + 1
-ret = shifted_POD_ALM(
-    qmat,
-    transfos,
-    nmodes_max=np.max(nmodes) + 50,
-    eps=1e-16,
-    Niter=Niter,
-    use_rSVD=False,
-    lambd=lambd0 * 1000,
-    mu=mu,
-)
+myparams = sPOD_Param()
+myparams.maxit = Niter
+
+if method == "ALM":
+    nmodes_param = np.max(nmodes) + 10
+    mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
+    lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
+    ret_E = shifted_POD_ALM(
+        qmat,
+        transfos,
+        myparams,
+        nmodes_max=nmodes_param,
+        use_rSVD=False,
+        mu=mu0,  # adjust for case
+        lambd=lambd0,
+        isError=True,
+    )
+elif method == "BFB":
+    myparams.lambda_s = 0.3  # adjust for case
+    myparams.lambda_E = 0.0135  # adjust for case
+    ret_E = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="BFB", isError=True)
+elif method == "JFB":
+    myparams.lambda_s = 0.3  # adjust for case
+    myparams.lambda_E = 0.0135  # adjust for case
+    ret_E = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="JFB", isError=True)
+elif method == "J2":
+    ret_E = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
 
 
 xlims = [-1, Niter]
@@ -437,16 +451,33 @@ plt.legend()
 ##########################################
 # facecolors='none' first we plot the resulting field
 Niter = 500
-ret_E = shifted_POD_ALM(
-    qmat,
-    transfos,
-    nmodes_max=np.max(nmodes) + 50,
-    eps=1e-16,
-    Niter=Niter,
-    use_rSVD=False,
-    lambd=lambd0,
-    mu=mu,
-)
+myparams = sPOD_Param()
+myparams.maxit = Niter
+if method == "ALM":
+    nmodes_param = np.max(nmodes) + 10
+    mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
+    lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
+    ret_E = shifted_POD_ALM(
+        qmat,
+        transfos,
+        myparams,
+        nmodes_max=nmodes_param,
+        use_rSVD=False,
+        mu=mu0,  # adjust for case
+        lambd=lambd0,
+        isError=True,
+    )
+elif method == "BFB":
+    myparams.lambda_s = 0.3  # adjust for case
+    myparams.lambda_E = 0.0135  # adjust for case
+    ret_E = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="BFB", isError=True)
+elif method == "JFB":
+    myparams.lambda_s = 0.3  # adjust for case
+    myparams.lambda_E = 0.0135  # adjust for case
+    ret_E = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="JFB", isError=True)
+elif method == "J2":
+    ret_E = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
+
 
 sPOD_frames, qtilde, rel_err = ret_E.frames, ret_E.data_approx, ret.rel_err_hist
 qf = [
@@ -520,28 +551,40 @@ data_shape = [Nx, 1, 1, Nt]
 linestyles = ["--", "-.", ":", "-", "-."]
 plot_list = []
 mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat)))
-lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
+lambda_s0 = 1
 ret_list = []
 plt.close(87)
 fig, ax = plt.subplots(num=87)
 for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]:
     mu = mu0 * fac
+    lambda_s = lambda_s0 * fac
     # transformations with interpolation order T^k of Ord(h^5) and T^{-k} of Ord(h^5)
     transfos = [
         Transform(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=[5, 5]),
         Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=[5, 5]),
     ]
 
-    ret = shifted_POD_ALM(
-        qmat,
-        transfos,
-        nmodes_max=np.max(nmodes) + 10,
-        eps=1e-16,
-        Niter=Niter,
-        use_rSVD=True,
-        lambd=lambd0,
-        mu=mu,
-    )
+    if method == "ALM":
+        ret = shifted_POD_ALM(
+            qmat,
+            transfos,
+            myparams,
+            nmodes_max=nmodes_param,
+            use_rSVD=False,
+            mu=mu,  # adjust for case
+        )
+    elif method == "BFB":
+        myparams.lambda_s = lambda_s
+        ret_E = shifted_POD_FB(
+            qmat, transfos, nmodes, myparams, method="BFB", isError=True
+        )
+    elif method == "JFB":
+        myparams.lambda_s = lambda_s
+        ret_E = shifted_POD_FB(
+            qmat, transfos, nmodes, myparams, method="JFB", isError=True
+        )
+    elif method == "J2":
+        ret_E = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
 
     ret_list.append(ret)
     h = ax.semilogy(
@@ -561,14 +604,14 @@ for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]
     # plot_list.append(h)
 # sPOD results           Xgrid - 0.1 * L) / w)
 
-ret = shifted_POD_J2(qmat, transfos, nmodes=nmodes, eps=1e-16, Niter=Niter)
-# %
-h = ax.semilogy(
-    np.arange(0, np.size(ret.rel_err_hist)),
-    ret.rel_err_hist,
-    "k-",
-    label="sPOD-$\mathcal{J}_2$ $(r_1,r_2)=(%d,%d)$" % (nmodes[0], nmodes[1]),
-)
+# ret = shifted_POD_J2(qmat, transfos, nmodes=nmodes, eps=1e-16, Niter=Niter)
+# # %
+# h = ax.semilogy(
+#     np.arange(0, np.size(ret.rel_err_hist)),
+#     ret.rel_err_hist,
+#     "k-",
+#     label="sPOD-$\mathcal{J}_2$ $(r_1,r_2)=(%d,%d)$" % (nmodes[0], nmodes[1]),
+# )
 plt.legend(bbox_to_anchor=(0, 1.02, 1, 0.2), loc="lower right")
 plt.subplots_adjust(bottom=0.2, top=0.8)
 plt.tight_layout(pad=3.0)
