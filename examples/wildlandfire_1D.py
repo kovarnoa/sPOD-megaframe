@@ -4,11 +4,9 @@ sys.path.append("../lib")
 import numpy as np
 from numpy import meshgrid
 import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sPOD_algo import (
-    shifted_POD_BFB,
+    shifted_POD_FB,
     shifted_POD_ALM,
-    shifted_POD_JFB,
     sPOD_Param,
     give_interpolation_error,
 )
@@ -61,19 +59,19 @@ print("interpolation error: %1.2e " % interp_err)
 
 qmat = np.reshape(fields, [Nx, Nt])
 
-# method = "shifted_POD_ALM"
+method = "shifted_POD_ALM"
 # method = "shifted_POD_JFB"
-method = "shifted_POD_BFB"
+# method = "shifted_POD_BFB"
 lambda0 = 4000  # for Temperature
 # lambda0 = 27  # for supply mass
+myparams = sPOD_Param()
+myparams.maxit = Niter
 
 if method == "shifted_POD_ALM":
     ret = shifted_POD_ALM(
         qmat,
         trafos,
-        nmodes_max=np.max(nmodes) + 10,
-        eps=1e-16,
-        Niter=Niter,
+        myparams,
         use_rSVD=True,
         lambd=1 / np.sqrt(np.maximum(Nx, Nt)) * 1,
         mu=Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.01,
@@ -84,16 +82,14 @@ elif method == "shifted_POD_BFB":
         lambda_s=lambda0,
         total_variation_iterations=40,
     )
-    ret = shifted_POD_BFB(qmat, trafos, nmodes, myparams)
+    ret = shifted_POD_FB(qmat, trafos, nmodes, myparams, method="BFB")
 elif method == "shifted_POD_JFB":
     myparams = sPOD_Param(
         maxit=Niter,
         lambda_s=lambda0,
         total_variation_iterations=40,
     )
-    ret = shifted_POD_JFB(qmat, trafos, nmodes, myparams)
-
-print(ret.ranks_hist)
+    ret = shifted_POD_FB(qmat, trafos, nmodes, myparams, method="JFB")
 
 
 sPOD_frames, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
@@ -206,11 +202,10 @@ for ip, fac in enumerate([0.01, 0.1, 0, 10, 100]):  # ,400, 800]):#,800,1000]:
     # transformations with interpolation order T^k of Ord(h^5) and T^{-k} of Ord(h^5)
     if method == "shifted_POD_JFB":
         myparams = sPOD_Param(maxit=Niter, lambda_s=lambd)
-        ret = shifted_POD_JFB(qmat, trafos, nmodes, myparams)
+        ret = shifted_POD_FB(qmat, trafos, nmodes, myparams, method="JFB")
     elif method == "shifted_POD_BFB":
         myparams = sPOD_Param(maxit=Niter, lambda_s=lambd)
-        ret = shifted_POD_BFB(qmat, trafos, nmodes, myparams)
-    print("Picture 9b: ", ret.ranks_hist)
+        ret = shifted_POD_FB(qmat, trafos, nmodes, myparams, method="BFB")
 
     ret_list.append(ret)
     h = ax.semilogy(

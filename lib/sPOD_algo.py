@@ -160,7 +160,7 @@ def shifted_POD_J2(
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
         qtilde = np.zeros_like(q)
-        ranks = []
+        ranks = [0] * Nframes
 
         ###########################
         # 3. Step: update frames
@@ -296,7 +296,7 @@ def shifted_POD_FB(
         rel_err_list.append(rel_err)
         if method == "JFB":
             qtilde = np.zeros_like(q)
-        ranks = []
+        ranks = [0] * Nframes
 
         ###################################
         #      3. Update the frames       #
@@ -428,7 +428,7 @@ def shifted_POD_ALM(
         #       2. Set qtilde to 0        #
         ###################################
         qtilde = np.zeros_like(q)
-        ranks = [0, 0]
+        ranks = [0] * Nframes
         ###################################
         #      3. Update the frames       #
         ###################################
