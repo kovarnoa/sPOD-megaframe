@@ -12,9 +12,8 @@ matplotlib.use("Agg")
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from sPOD_tools import (
     shifted_POD_J2,
-    shifted_POD_BFB,
-    shifted_rPCA,
-    shifted_POD_JFB,
+    shifted_POD_FB,
+    shifted_POD_ALM,
     sPOD_Param,
     give_interpolation_error,
 )
@@ -179,7 +178,7 @@ if method == "J2":
 else:
     if method == "ADM":
         print("START ADM")
-        ret = shifted_rPCA(
+        ret = shifted_POD_ALM(
             qmat,
             transform_list,
             nmodes_max=100,
@@ -188,6 +187,7 @@ else:
             use_rSVD=True,
             lambd=1 / np.sqrt(np.max([Nx, Ny])) * 100,
             mu=np.prod(np.size(qmat, 0)) / (4 * np.sum(np.abs(qmat))) * 0.5,
+            isError=True,
         )
     elif method == "BFB":
         print("START BFB")
@@ -196,7 +196,7 @@ else:
             lambda_s=3e4,
             total_variation_iterations=40,
         )
-        ret = shifted_POD_BFB(qmat, transform_list, ([5, 5]), myparams)
+        ret = shifted_POD_FB(qmat, transform_list, ([5, 5]), myparams, method="BFB")
     elif method == "JFB":
         print("START JFB")
         myparams = sPOD_Param(
@@ -204,7 +204,7 @@ else:
             lambda_s=3e4,
             total_variation_iterations=40,
         )
-        ret = shifted_POD_JFB(qmat, transform_list, ([5, 5]), myparams)
+        ret = shifted_POD_FB(qmat, transform_list, ([5, 5]), myparams, method="JFB")
 
     qframes, qtilde, rel_err, ranks = (
         ret.frames,
