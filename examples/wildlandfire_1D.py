@@ -35,16 +35,14 @@ def generate_wildlandfire_data(grid, time, snapshot, shifts):
     return Q, shift_list, L, dx, Nx, Nt, nmodes
 
 
-Niter = 400
+Niter = 4
 
-prefix = "Wildlandfire_1d"
-# prefix = "small_wildlandfire"
 
 fields, shift_list, L, dx, Nx, Nt, nmodes = generate_wildlandfire_data(
-    f"../examples/{prefix}/1D_Grid.npy",
-    f"../examples/{prefix}/Time.npy",
-    f"../examples/{prefix}/SnapShotMatrix558.49.npy",
-    f"../examples/{prefix}/Shifts558.49.npy",
+    f"../examples/Wildlandfire_1d/1D_Grid.npy",
+    f"../examples/Wildlandfire_1d/Time.npy",
+    f"../examples/Wildlandfire_1d/SnapShotMatrix558.49.npy",
+    f"../examples/Wildlandfire_1d/Shifts558.49.npy",
 )
 
 data_shape = [Nx, 1, 1, Nt]
@@ -159,33 +157,33 @@ for axes in ax[:4]:
 plt.colorbar(im2)
 plt.tight_layout()
 
-# save_fig(pic_dir + "wildlandfire_S.png", fig)
+save_fig(pic_dir + "wildlandfire_T.png", fig)
 plt.show()
 
 
 # ####### Visualize convergence of co moving ranks ###################
-# xlims = [-1, Niter]
-# plt.close(11)
-# fig, ax = plt.subplots(num=11)
-# plt.plot(ret.ranks_hist[0], "+", label="$\mathrm{rank}(\mathbf{Q}^1)$")
-# plt.plot(ret.ranks_hist[1], "x", label="$\mathrm{rank}(\mathbf{Q}^2)$")
-# plt.plot(ret.ranks_hist[2], "*", label="$\mathrm{rank}(\mathbf{Q}^3)$")
-# plt.plot(xlims, [nmodes[0], nmodes[0]], "k--", label="exact rank $r_1=%d$" % nmodes[0])
-# plt.plot(xlims, [nmodes[1], nmodes[1]], "k-", label="exact rank $r_2=%d$" % nmodes[1])
-# plt.plot(xlims, [nmodes[2], nmodes[2]], "k-.", label="exact rank $r_3=%d$" % nmodes[2])
-# plt.xlim(xlims)
-# plt.xlabel("iterations")
-# plt.ylabel("rank $r_k$")
-# plt.legend()
+xlims = [-1, Niter]
+plt.close(11)
+fig, ax = plt.subplots(num=11)
+plt.plot(ret.ranks_hist[0], "+", label="$\mathrm{rank}(\mathbf{Q}^1)$")
+plt.plot(ret.ranks_hist[1], "x", label="$\mathrm{rank}(\mathbf{Q}^2)$")
+plt.plot(ret.ranks_hist[2], "*", label="$\mathrm{rank}(\mathbf{Q}^3)$")
+plt.plot(xlims, [nmodes[0], nmodes[0]], "k--", label="exact rank $r_1=%d$" % nmodes[0])
+plt.plot(xlims, [nmodes[1], nmodes[1]], "k-", label="exact rank $r_2=%d$" % nmodes[1])
+plt.plot(xlims, [nmodes[2], nmodes[2]], "k-.", label="exact rank $r_3=%d$" % nmodes[2])
+plt.xlim(xlims)
+plt.xlabel("iterations")
+plt.ylabel("rank $r_k$")
+plt.legend()
 
-# left, bottom, width, height = [0.5, 0.45, 0.3, 0.35]
-# ax2 = fig.add_axes([left, bottom, width, height])
-# ax2.pcolormesh(qmat)
-# ax2.axis("off")
-# ax2.set_title(r"$\mathbf{Q}$")
+left, bottom, width, height = [0.5, 0.45, 0.3, 0.35]
+ax2 = fig.add_axes([left, bottom, width, height])
+ax2.pcolormesh(qmat)
+ax2.axis("off")
+ax2.set_title(r"$\mathbf{Q}$")
 
-# plt.show()
-# save_fig(pic_dir + "ranks_wildlandfire_S.png", fig)
+plt.show()
+save_fig(pic_dir + "ranks_wildlandfire_S.png", fig)
 
 
 # %% compare shifted rPCA and shifted POD
@@ -236,5 +234,5 @@ plt.tight_layout(pad=3.0)
 ax.set_xlim(-5, ax.get_xlim()[-1])
 plt.ylabel(r"relative error")
 plt.xlabel(r"iteration")
-# save_fig(pic_dir + "/convergence_wildlandfire_S_sPOD_DFB.png", fig)
+save_fig(pic_dir + "/convergence_wildlandfire_S_sPOD_DFB.png", fig)
 plt.show()

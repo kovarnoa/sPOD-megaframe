@@ -50,7 +50,7 @@ def cartesian_to_polar(cartesian_data, X, Y, t, fill_val=0):
     import polarTransform
 
     for k in range(Nt):
-        #print(k)
+        # print(k)
         data, ptSettings = polarTransform.convertToPolarImage(
             cartesian_data[..., 0, k],
             radiusSize=N_r,
@@ -73,7 +73,7 @@ def polar_to_cartesian(polar_data, t, aux=None):
     cartesian_data = np.zeros_like(polar_data)
 
     for k in range(Nt):
-        #print(k)
+        # print(k)
         cartesian_data[..., 0, k] = aux[k].convertToCartesianImage(
             polar_data[..., 0, k].transpose()
         )
