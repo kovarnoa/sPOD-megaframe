@@ -1,3 +1,11 @@
+# -*- coding: utf-8 -*-
+"""
+@author: Philipp Krah, Beata Zorawski, Arthur Marmin
+
+"""
+# ============================================================================ #
+#                              MODULES IMPORTATION                             #
+# ============================================================================ #
 import sys
 from sklearn.utils.extmath import randomized_svd
 import os
@@ -17,12 +25,8 @@ from sPOD_tools import (
     sPOD_Param,
     give_interpolation_error,
 )
-from transforms import transforms
-
-# from plot_utils import save_fig
-
-pic_dir = pic_dir = "../images/"
-
+from transforms import Transform
+# ============================================================================ #
 
 def cartesian_to_polar(cartesian_data, X, Y, t, fill_val=0):
 
@@ -80,7 +84,8 @@ def polar_to_cartesian(polar_data, t, aux=None):
     return cartesian_data
 
 
-########################################################################################################################
+################################################################################
+pic_dir = pic_dir = "../images/"
 impath = "./Wildlandfire_2d/"
 os.makedirs(impath, exist_ok=True)
 
@@ -133,14 +138,14 @@ d_del = np.asarray([dr, dtheta])
 L = np.asarray([r_i[-1], theta_i[-1]])
 
 # Create the transformations
-trafo_1 = transforms(
+trafo_1 = Transform(
     data_shape,
     L,
     shifts=np.reshape(delta[0], newshape=[2, -1, Nt]),
     dx=d_del,
     use_scipy_transform=False,
 )
-trafo_2 = transforms(
+trafo_2 = Transform(
     data_shape,
     L,
     shifts=np.reshape(delta[1], newshape=[2, -1, Nt]),
@@ -163,31 +168,27 @@ transform_list = [trafo_1, trafo_2]
 qmat = np.reshape(q_polar, [-1, Nt])
 if method == "J2":
     print("START J2")
+    myparams = sPOD_Param(gtol=1e-7, eps=1e-16, maxit=40,
+                          total_variation_iterations=40)
     ret = shifted_POD_J2(
         qmat,
         transform_list,
         nmodes=[10, 8],
-        eps=1e-16,
-        Niter=6,
-        use_rSVD=False,
-        dtol=1e-7,
-        total_variation_iterations=40,
     )
     qframes, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
     modes_list = [5, 5]
 else:
     if method == "ADM":
         print("START ADM")
+        myparams = sPOD_Param(eps=1e-16, maxit=8, use_rSVD=True, isError=True,
+                          total_variation_iterations=40)
         ret = shifted_POD_ALM(
             qmat,
             transform_list,
+            myparams,
             nmodes_max=100,
-            eps=1e-16,
-            Niter=8,
-            use_rSVD=True,
             lambd=1 / np.sqrt(np.max([Nx, Ny])) * 100,
             mu=np.prod(np.size(qmat, 0)) / (4 * np.sum(np.abs(qmat))) * 0.5,
-            isError=True,
         )
     elif method == "BFB":
         print("START BFB")

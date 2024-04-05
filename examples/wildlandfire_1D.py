@@ -1,3 +1,10 @@
+# -*- coding: utf-8 -*-
+"""
+@author: Philipp Krah, Beata Zorawski, Arthur Marmin
+"""
+# ============================================================================ #
+#                              MODULES IMPORTATION                             #
+# ============================================================================ #
 import sys
 
 sys.path.append("../lib")
@@ -12,9 +19,7 @@ from sPOD_algo import (
 )
 from transforms import Transform
 from plot_utils import save_fig
-
-pic_dir = pic_dir = "../images/"
-
+# ============================================================================ #
 
 def generate_wildlandfire_data(grid, time, snapshot, shifts):
     x = np.load(grid, allow_pickle=True)[0]
@@ -36,7 +41,7 @@ def generate_wildlandfire_data(grid, time, snapshot, shifts):
 
 
 Niter = 4
-
+pic_dir = "../images/"
 
 fields, shift_list, L, dx, Nx, Nt, nmodes = generate_wildlandfire_data(
     f"../examples/Wildlandfire_1d/1D_Grid.npy",
@@ -66,13 +71,13 @@ myparams = sPOD_Param()
 myparams.maxit = Niter
 
 if method == "shifted_POD_ALM":
+    myparams.use_rSVD = True
     ret = shifted_POD_ALM(
         qmat,
         trafos,
         myparams,
-        use_rSVD=True,
-        lambd=1 / np.sqrt(np.maximum(Nx, Nt)) * 1,
-        mu=Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.01,
+        lambd = 1 / np.sqrt(np.maximum(Nx, Nt)) * 1,
+        mu = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.01,
     )
 elif method == "shifted_POD_BFB":
     myparams = sPOD_Param(

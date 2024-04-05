@@ -16,20 +16,18 @@ import numpy as np
 from numpy import exp, mod, meshgrid, cos, sin, exp, pi
 import matplotlib.pyplot as plt
 from sPOD_algo import (
-    shifted_POD_J2,
-    shifted_POD_FB,
-    shifted_POD_ALM,
+    shifted_POD,
     sPOD_Param,
     give_interpolation_error,
 )
 from transforms import Transform
 from plot_utils import save_fig
-
 # ============================================================================ #
 
-pic_dir = "../images/"
 
-
+# ============================================================================ #
+#                              Auxiliary Functions                             #
+# ============================================================================ #
 def generate_data(Nx, Nt, case, noise_percent=0.2):
     Tmax = 0.5  # total time
     L = 1  # total domain size
@@ -50,8 +48,8 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
         )
 
         # Define your field as a list of fields:
-        # For example the first element in the list can be the density of
-        # a flow quantity and the second element could be the velocity in 1D
+        # For example the first element in the list can be the density of a
+        # flow quantity and the second element could be the velocity in 1D
         density = fun(X, T)
         velocity = fun(X, T)
         shifts1 = np.asarray(-c * t)
@@ -60,13 +58,13 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
         shift_list = [shifts1, shifts2]
     elif case == "sine_waves":
         delta = 0.0125
-        # first frame
+        # First frame
         q1 = np.zeros_like(X)
         shifts1 = -0.25 * cos(7 * pi * t)
         for r in np.arange(1, 5):
             x1 = 0.25 + 0.1 * r - shifts1
             q1 = q1 + sin(2 * pi * r * T / Tmax) * exp(-((X - x1) ** 2) / delta**2)
-        # second frame
+        # Second frame
         c2 = dx / dt
         shifts2 = -c2 * t
         q2 = np.zeros_like(X)
@@ -126,28 +124,36 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
         shift_list = [shifts1, shifts2]
 
     return Q, shift_list, nmodes, L, dx
+# ============================================================================ #
 
 
 # ============================================================================ #
-
-##########################################
-# %% Define parameters:
-##########################################
-plt.close("all")
+#                              CONSTANT DEFINITION                             #
+# ============================================================================ #
+PIC_DIR = "../images/"
+SAVE_FIG = False
 case = "multiple_ranks"
-# case = "sine_waves"
+# CASE = "sine_waves"
 Nx = 400  # number of grid points in x
 Nt = Nx // 2  # number of time intervals
 Niter = 500  # number of sPOD iterations
-method = "ALM"
-# method = "BFB"
-# method = "JFB"
-# method = "J2"
+METHOD = "ALM"
+# METHOD = "BFB"
+# METHOD = "JFB"
+# METHOD = "J2"
+# ============================================================================ #
 
+
+# ============================================================================ #
+#                                 Main Program                                 #
+# ============================================================================ #
+# Clean-up
+plt.close("all")
+# Data Deneration
 fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, case)
-#######################################
+############################################
 # %% CALL THE SPOD algorithm
-######################################
+############################################
 data_shape = [Nx, 1, 1, Nt]
 transfos = [
     Transform(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=5),
@@ -162,32 +168,24 @@ mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat)))
 lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
 myparams = sPOD_Param()
 myparams.maxit = Niter
-if method == "ALM":
-    nmodes_param = np.max(nmodes) + 10
-    ret = shifted_POD_ALM(
-        qmat,
-        transfos,
-        myparams,
-        nmodes_max=nmodes_param,
-        use_rSVD=False,
-        mu=mu0,  # adjust for case
-    )
-elif method == "BFB":
+param_alm = None
+
+if METHOD == "ALM":
+    param_alm = mu0  # adjust for case
+elif METHOD == "BFB":
     myparams.lambda_s = 0.3  # adjust for case
-    ret = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="BFB")
-elif method == "JFB":
+elif METHOD == "JFB":
     myparams.lambda_s = 0.4  # adjust for case
-    ret = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="JFB")
-elif method == "J2":
-    ret = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
+ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
+
 sPOD_frames, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
 qf = [
     np.squeeze(np.reshape(transfo.apply(frame.build_field()), data_shape))
     for transfo, frame in zip(transfos, ret.frames)
 ]
-###########################################
+############################################
 # %% 1. visualize your results: sPOD frames
-##########################################
+############################################
 # first we plot the resulting field
 gridspec = {"width_ratios": [1, 1, 1, 1]}
 fig, ax = plt.subplots(1, 4, figsize=(12, 4), gridspec_kw=gridspec, num=101)
@@ -235,7 +233,7 @@ for axes in ax[:4]:
 plt.colorbar(im2)
 plt.tight_layout()
 
-# save_fig(pic_dir + "01_traveling_wave_1D_Frames.png",fig)
+# save_fig(PIC_DIR + "01_traveling_wave_1D_Frames.png",fig)
 plt.show()
 ###########################################
 
@@ -257,26 +255,15 @@ mu = Nx * Nt / (4 * np.sum(np.abs(qmat)))
 myparams = sPOD_Param()
 myparams.maxit = Niter
 myparams.lambda_E = mu
+param_alm = None
 
-if method == "ALM":
-    nmodes_param = np.max(nmodes) + 10
-    myparams.lambd_s = lambd0
-    ret = shifted_POD_ALM(
-        qmat,
-        transfos,
-        myparams,
-        nmodes_max=nmodes_param,
-        use_rSVD=False,
-        mu=mu,  # adjust for case
-    )
-elif method == "BFB":
+if METHOD == "ALM":
+    param_alm = mu  # adjust for case
+elif METHOD == "BFB":
     myparams.lambda_s = 0.3  # adjust for case
-    ret = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="BFB")
-elif method == "JFB":
+elif METHOD == "JFB":
     myparams.lambda_s = 0.4  # adjust for case
-    ret = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="JFB")
-elif method == "J2":
-    ret = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
+ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
 
 xlims = [-1, Niter]
 plt.close(11)
@@ -296,8 +283,8 @@ ax2.pcolormesh(qmat)
 ax2.axis("off")
 ax2.set_title(r"$\mathbf{Q}$")
 
-
-# save_fig(pic_dir + "/convergence_ranks_shifted_rPCA.png",fig)
+if SAVE_FIG:
+    save_fig(PIC_DIR + "/convergence_ranks_shifted_rPCA.png", fig)
 
 ###########################################
 # %%  visualize your results: sPOD frames
@@ -355,7 +342,8 @@ for axes in ax[:4]:
 plt.colorbar(im2)
 plt.tight_layout()
 
-# save_fig(pic_dir + "multiple_traveling_wave_1D_Frames.png",fig)
+if SAVE_FIG:
+    save_fig(PIC_DIR + "multiple_traveling_wave_1D_Frames.png",fig)
 plt.show()
 
 ####################################################################
@@ -376,31 +364,18 @@ transfos = [
 ]
 myparams = sPOD_Param()
 myparams.maxit = Niter
+myparams.isError = True
+param_alm = None
 
-if method == "ALM":
-    nmodes_param = np.max(nmodes) + 10
-    mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
-    lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
-    ret_E = shifted_POD_ALM(
-        qmat,
-        transfos,
-        myparams,
-        nmodes_max=nmodes_param,
-        use_rSVD=False,
-        mu=mu0,  # adjust for case
-        lambd=lambd0,
-        isError=True,
-    )
-elif method == "BFB":
+if METHOD == "ALM":
+    param_alm = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
+elif METHOD == "BFB":
     myparams.lambda_s = 0.3  # adjust for case
     myparams.lambda_E = 0.0135  # adjust for case
-    ret_E = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="BFB", isError=True)
-elif method == "JFB":
+elif METHOD == "JFB":
     myparams.lambda_s = 0.3  # adjust for case
     myparams.lambda_E = 0.0135  # adjust for case
-    ret_E = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="JFB", isError=True)
-elif method == "J2":
-    ret_E = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
+ret_E = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
 
 
 xlims = [-1, Niter]
@@ -443,8 +418,8 @@ plt.legend()
 # ax2.axis("off")
 # ax2.set_title(r"$\mathbf{Q}$")
 
-
-# save_fig(pic_dir + "/convergence_ranks_shifted_rPCA_noise.png",fig)
+if SAVE_FIG:
+    save_fig(PIC_DIR + "/convergence_ranks_shifted_rPCA_noise.png",fig)
 
 ###########################################
 # %%  visualize your results: sPOD frames
@@ -453,31 +428,18 @@ plt.legend()
 Niter = 500
 myparams = sPOD_Param()
 myparams.maxit = Niter
-if method == "ALM":
-    nmodes_param = np.max(nmodes) + 10
-    mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
-    lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
-    ret_E = shifted_POD_ALM(
-        qmat,
-        transfos,
-        myparams,
-        nmodes_max=nmodes_param,
-        use_rSVD=False,
-        mu=mu0,  # adjust for case
-        lambd=lambd0,
-        isError=True,
-    )
-elif method == "BFB":
-    myparams.lambda_s = 0.3  # adjust for case
-    myparams.lambda_E = 0.0135  # adjust for case
-    ret_E = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="BFB", isError=True)
-elif method == "JFB":
-    myparams.lambda_s = 0.3  # adjust for case
-    myparams.lambda_E = 0.0135  # adjust for case
-    ret_E = shifted_POD_FB(qmat, transfos, nmodes, myparams, method="JFB", isError=True)
-elif method == "J2":
-    ret_E = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
+myparams.isError = True
+param_alm = None
 
+if METHOD == "ALM":
+    param_alm = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
+elif METHOD == "BFB":
+    myparams.lambda_s = 0.3  # adjust for case
+    myparams.lambda_E = 0.0135  # adjust for case
+elif METHOD == "JFB":
+    myparams.lambda_s = 0.3  # adjust for case
+    myparams.lambda_E = 0.0135  # adjust for case
+ret_E = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
 
 sPOD_frames, qtilde, rel_err = ret_E.frames, ret_E.data_approx, ret.rel_err_hist
 qf = [
@@ -536,7 +498,8 @@ for axes in ax[:5]:
 plt.colorbar(im2)
 plt.tight_layout()
 
-# save_fig(pic_dir + "traveling_waves_noise_1D_Frames.png",fig)
+if SAVE_FIG:
+    save_fig(PIC_DIR + "traveling_waves_noise_1D_Frames.png",fig)
 plt.show()
 
 # %% compare shifted rPCA and shifted POD
@@ -563,28 +526,15 @@ for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]
         Transform(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=[5, 5]),
         Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=[5, 5]),
     ]
-
-    if method == "ALM":
-        ret = shifted_POD_ALM(
-            qmat,
-            transfos,
-            myparams,
-            nmodes_max=nmodes_param,
-            use_rSVD=False,
-            mu=mu,  # adjust for case
-        )
-    elif method == "BFB":
+    param_alm = None
+    
+    if METHOD == "ALM":
+        param_alm = mu  # adjust for case
+    elif METHOD == "BFB":
         myparams.lambda_s = lambda_s
-        ret_E = shifted_POD_FB(
-            qmat, transfos, nmodes, myparams, method="BFB", isError=True
-        )
-    elif method == "JFB":
+    elif METHOD == "JFB":
         myparams.lambda_s = lambda_s
-        ret_E = shifted_POD_FB(
-            qmat, transfos, nmodes, myparams, method="JFB", isError=True
-        )
-    elif method == "J2":
-        ret_E = shifted_POD_J2(qmat, transfos, nmodes, myparams, True)
+    ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
 
     ret_list.append(ret)
     h = ax.semilogy(
@@ -618,8 +568,6 @@ plt.tight_layout(pad=3.0)
 ax.set_xlim(-5, ax.get_xlim()[-1])
 plt.ylabel(r"relative error")
 plt.xlabel(r"iteration")
-# save_fig(pic_dir + "/convergence_J1_vs_J2_noise.png",fig)
+if SAVE_FIG:
+    save_fig(PIC_DIR + "/convergence_J1_vs_J2_noise.png",fig)
 plt.show()
-
-
-###########################################
