@@ -28,6 +28,10 @@ from sPOD_tools import (
 from transforms import Transform
 # ============================================================================ #
 
+
+# ============================================================================ #
+#                              AUXILIARY FUNCTIONS                             #
+# ============================================================================ #
 def cartesian_to_polar(cartesian_data, X, Y, t, fill_val=0):
 
     Nx = np.size(X)
@@ -76,16 +80,17 @@ def polar_to_cartesian(polar_data, t, aux=None):
     cartesian_data = np.zeros_like(polar_data)
 
     for k in range(Nt):
-        # print(k)
         cartesian_data[..., 0, k] = aux[k].convertToCartesianImage(
             polar_data[..., 0, k].transpose()
         )
 
     return cartesian_data
+# ============================================================================ #
 
 
-################################################################################
-pic_dir = pic_dir = "../images/"
+# ============================================================================ #
+#                                  MAIN PROGRAM                                #
+# ============================================================================ #
 impath = "./Wildlandfire_2d/"
 os.makedirs(impath, exist_ok=True)
 
@@ -181,13 +186,13 @@ else:
     if method == "ADM":
         print("START ADM")
         myparams = sPOD_Param(eps=1e-16, maxit=8, use_rSVD=True, isError=True,
-                          total_variation_iterations=40)
+                              total_variation_iterations=40,
+                              lambda_E=1/np.sqrt(np.max([Nx, Ny]))*100)
         ret = shifted_POD_ALM(
             qmat,
             transform_list,
             myparams,
             nmodes_max=100,
-            lambd=1 / np.sqrt(np.max([Nx, Ny])) * 100,
             mu=np.prod(np.size(qmat, 0)) / (4 * np.sum(np.abs(qmat))) * 0.5,
         )
     elif method == "BFB":
@@ -215,13 +220,10 @@ else:
     )
     modes_list = ranks
 
-
 # Deduce the frames
-
 q_frame_1 = np.reshape(qframes[0].build_field(), newshape=data_shape)
 q_frame_2 = np.reshape(qframes[1].build_field(), newshape=data_shape)
 qtilde = np.reshape(qtilde, newshape=data_shape)
-
 
 # Transform the frame wise snapshots into lab frame (moving frame)
 q_frame_1_lab = transform_list[0].apply(q_frame_1)

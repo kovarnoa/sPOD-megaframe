@@ -76,7 +76,6 @@ if method == "shifted_POD_ALM":
         qmat,
         trafos,
         myparams,
-        lambd = 1 / np.sqrt(np.maximum(Nx, Nt)) * 1,
         mu = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.01,
     )
 elif method == "shifted_POD_BFB":
