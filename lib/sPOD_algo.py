@@ -19,7 +19,6 @@ from numpy.linalg import norm
 from dataclasses import dataclass
 from warnings import warn
 from sPOD_tools import Frame, SVT, trunc_svd, shrink
-
 # ============================================================================ #
 
 
@@ -71,20 +70,59 @@ class ReturnValue:
             self.ranks = ranks
         if ranks_hist is not None:
             self.ranks_hist = ranks_hist
-
-
 # ============================================================================ #
 
 
 # ============================================================================ #
 #                                sPOD ALGORITHMS                               #
 # ============================================================================ #
+def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method,
+                param_alm=None):
+    """
+    This function aggregates all the different shifted_POD_Algo() methods to
+    provide a unique interface.
+
+    :param snapshot_matrix: Snapshot matrix with with dimensions :math:`M \times N`,
+                            :math:`N` is the number of snapshots (i.e. time stamps)
+                            and :math:`M` is the number of number of spatial samples
+                            (i.e. the ODE dimension).
+    :type snapshot_matrix: :class:`numpy.ndarray` (2-dimensional)
+
+    :param transforms: List of transformations associated with the co-moving fields.
+    :type transforms: List[Transform]
+
+    :param nmodes: Number of modes to use in each frame
+    :type nmodes: integer
+
+    :param myparams: Parameters for the JFB algorithm
+    :type myparams: sPOD_Param
+
+    :return:
+    :rtype: :class:`ReturnValue`
+    """
+    if method == "ALM": 
+        return shifted_POD_ALM(
+            snapshot_matrix,
+            transforms,
+            myparams,
+            nmodes_max=np.max(nmodes) + 10,
+            mu=param_alm)
+    elif method == "BFB":
+        return shifted_POD_FB(snapshot_matrix, transforms, nmodes, myparams,
+                              method="BFB")
+    elif method == "JFB":
+        return shifted_POD_FB(snapshot_matrix, transforms, nmodes, myparams,
+                              method="JFB")
+    elif method == "J2":
+        return shifted_POD_J2(snapshot_matrix, transforms, nmodes, myparams,
+                              True)
+
+
 def shifted_POD_J2(
     snapshot_matrix,
     transforms,
     nmodes,
     myparams,
-    use_rSVD=False,
 ):
     """
     This function implements the J2 algorithm.
@@ -104,9 +142,6 @@ def shifted_POD_J2(
     :param myparams: Parameters for the JFB algorithm
     :type myparams: sPOD_Param
 
-    :param use_rSVD: Boolean set to True in order to use randomized version of the SVD.
-    :type use_rSVD: bool, optional
-
     :return:
     :rtype: :class:`ReturnValue`
     """
@@ -114,7 +149,7 @@ def shifted_POD_J2(
     assert (
         np.ndim(snapshot_matrix) == 2
     ), "Please give enter a snapshotmatrix with every snapshot in one column"
-    if use_rSVD:
+    if myparams.use_rSVD:
         warn(
             "Warning: Using rSVD to accelarate decomposition procedure may lead "
             "to different results."
@@ -136,7 +171,7 @@ def shifted_POD_J2(
     ###########################
     # Error of the truncated SVD
     r_ = np.sum(nmodes)
-    (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=False)
+    (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=my_params.use_rSVD)
     err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
     print(
         "Relative error using a truncated SVD with {:d} modes:{:4.4e}".format(
@@ -170,9 +205,8 @@ def shifted_POD_J2(
             res_shifted = trafo.reverse(res)
             q_frame_field = q_frame.build_field()
             stepsize = 1 / Nframes
-            mylambda = 1e-2
             q_frame.set_orthonormal_system(
-                q_frame_field + stepsize * res_shifted, use_rSVD
+                q_frame_field + stepsize * res_shifted, myparams.use_rSVD
             )
             if myparams.total_variation_iterations > 0:
                 q_frame.smoothen_time_amplitudes(
@@ -206,11 +240,10 @@ def shifted_POD_FB(
     transforms,
     nmodes,
     myparams,
-    use_rSVD=False,
     method="BFB",
 ):
     """
-    This function implements the Joint Forward-Backward method (JFB).
+    This function implements the Forward-Backward method (FB).
 
     :param snapshot_matrix: Snapshot matrix with with dimensions :math:`M \times N`,
                             :math:`N` is the number of snapshots (i.e. time stamps)
@@ -224,15 +257,11 @@ def shifted_POD_FB(
     :param nmodes: Number of modes to use in each frame
     :type nmodes: integer
 
-    :param myparams: Parameters for the JFB algorithm
+    :param myparams: Parameters for the FB algorithm
     :type myparams: class:`sPOD_Param`
 
-    :param use_rSVD: Boolean set to True in order to use randomized version of
-                     the SVD.
-    :type use_rSVD: bool, optional
-
-    :param method: Method to use for the algorithm. Options are "BFB" (Backward
-                    Forward Backward) and "FB" (Forward Backward).
+    :param method: Choice of the version of FB. Options are "BFB" (Block-coordinate
+                   Forward Backward) and "JFB" (Joint Forward Backward).
 
     :return:
     :rtype: :class:`ReturnValue`
@@ -241,7 +270,7 @@ def shifted_POD_FB(
     assert (
         np.ndim(snapshot_matrix) == 2
     ), "Please give enter a snapshotmatrix with every snapshot in one column"
-    if use_rSVD:
+    if myparams.use_rSVD:
         warn(
             "Warning: Using rSVD to accelarate decomposition procedure may lead "
             "to different results."
@@ -265,7 +294,7 @@ def shifted_POD_FB(
     ###########################
     # Error of the truncated SVD
     r_ = np.sum(nmodes)
-    (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=False)
+    (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=myparams.use_rSVD)
     err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
     print(
         "Relative error using a truncated SVD with {:d} modes:{:4.4e}".format(
@@ -365,26 +394,39 @@ def shifted_POD_ALM(
     transforms,
     myparams,
     nmodes_max=None,
-    use_rSVD=False,
-    mu=None,
-    lambd=None,
-    isError=False,
-):
+    mu=None):
     """
-    :param snapshot_matrix: M x N matrix with N beeing the number of snapshots, M is the ODE dimension
-    :param transforms: Transformations
-    :param nmodes_max: maximal number of modes allowed in each frame, default is the number of snapshots N
-                    Note: it is good to put a number here that is large enough to get the error down but smaller then N,
-                    because it will increase the performance of the algorithm
-    :param eps: stopping criteria
-    :param Niter: maximal number of iterations
-    :param visualize: if true: show intermediet results
+    This function implements the Augmented Lagangian method (ALM).
+
+    :param snapshot_matrix: Snapshot matrix with with dimensions :math:`M \times N`,
+                            :math:`N` is the number of snapshots (i.e. time stamps)
+                            and :math:`M` is the number of number of spatial samples
+                            (i.e. the ODE dimension).
+    :type snapshot_matrix: :class:`numpy.ndarray` (2-dimensional)
+
+    :param transforms: List of transformations associated with the co-moving fields.
+    :type transforms: List[Transform]
+
+    :param myparams: Parameters for ALM algorithm
+    :type myparams: class:`sPOD_Param`
+
+    :param nmodes_max: Maximal number of modes allowed in each frame, default is
+                       the number of snapshots :math:`N`.
+                       Note: it is good to give a number large enough in order to
+                             get the error down but smaller than :math:`N`.
+                             This will increase the performance of the algorith.
+
+    :param mu: Parameter of the augmented Lagrangian (i.e. weight of the
+               quadratic term).
+    :type mu: float
+
     :return:
+    :rtype: :class:`ReturnValue`
     """
     assert (
         np.ndim(snapshot_matrix) == 2
     ), "Please give enter a snapshotmatrix with every snapshot in one column"
-    if use_rSVD:
+    if myparams.use_rSVD:
         warn(
             "Warning: Using rSVD to accelarate decomposition procedure may lead "
             "to different results."
@@ -414,8 +456,8 @@ def shifted_POD_ALM(
     M, N = np.shape(q)
     if mu is None:
         mu = N * M / (4 * np.sum(np.abs(q)))
-    if lambd is None:
-        lambd = 1 / np.sqrt(np.maximum(M, N))
+    if myparams.lambda_E is None:
+        myparams.lambda_E = 1 / np.sqrt(np.maximum(M, N))
     mu_inv = 1 / mu
     rel_err = 1
     res_old = 0
@@ -440,7 +482,7 @@ def shifted_POD_ALM(
                 if p != k:
                     qtemp += trafo_p.apply(frame_p.build_field())
             qk = trafo.reverse(q - qtemp - E + mu_inv * Y)
-            [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, use_rSVD)
+            [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, myparams.use_rSVD)
             rank = np.sum(S > 0)
             q_frame.modal_system = {
                 "U": U[:, :rank],
@@ -454,12 +496,12 @@ def shifted_POD_ALM(
         ###################################
         #    4. Update the noise term     #
         ###################################
-        if isError:
-            E = shrink(q - qtilde + mu_inv * Y, lambd * mu_inv)
+        if myparams.isError:
+            E = shrink(q - qtilde + mu_inv * Y, myparams.lambda_E * mu_inv)
         ###################################
         #      5. Update multipliers      #
         ###################################
-        if isError:
+        if myparams.isError:
             res = q - qtilde - E
         else:
             res = q - qtilde
@@ -482,7 +524,7 @@ def shifted_POD_ALM(
         if myparams.isVerbose:
             print(
                 "Iter {:4d} / {:d} | Rel_err= {:4.4e} | norm(dres) = {:4.1e} | "
-                "norm(Q-Qtilde)/norm(Q) = {:4.1} | t_cpu = {:2.2f}s | "
+                "norm(Q-Qtilde)/norm(Q) = {:4.2e} | t_cpu = {:2.2f}s | "
                 "ranks_frame = ".format(
                     it,
                     myparams.maxit,
@@ -506,7 +548,7 @@ def shifted_POD_ALM(
         S = frame_p.modal_system["sigma"]
         frame_p.Nmodes = np.sum(S > 0)
 
-    if isError:
+    if myparams.isError:
         print("CPU time in total: ", sum_elapsed)
         return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
 
@@ -628,6 +670,7 @@ class sPOD_Param:
         maxit (int): Maximum number of iterations.
         isVerbose (bool): Should the algorithm print information while running?
         isError (bool): Should the algorithm use the error term?
+        use_rSVD (bool): Set to True in order to use randomized version of the SVD.
         lambda_s (float): Regularization parameter for the nuclear norm of the
                           co-moving frames.
         lambda_E (float): Regularization parameter for the l1-norm of the error
@@ -642,9 +685,8 @@ class sPOD_Param:
     maxit: int = 10000
     isVerbose: bool = True
     isError: bool = False
+    use_rSVD: bool = False
     lambda_s: float = 1e-2
     lambda_E: float = 1e-2
     total_variation_iterations: int = -1
-
-
 # ============================================================================ #
