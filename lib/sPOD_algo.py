@@ -482,7 +482,8 @@ def shifted_POD_ALM(
                 if p != k:
                     qtemp += trafo_p.apply(frame_p.build_field())
             qk = trafo.reverse(q - qtemp - E + mu_inv * Y)
-            [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, myparams.use_rSVD)
+            [U, S, VT] = SVT(qk, mu_inv*myparams.lambda_s, q_frame.Nmodes,
+                             myparams.use_rSVD)
             rank = np.sum(S > 0)
             q_frame.modal_system = {
                 "U": U[:, :rank],
