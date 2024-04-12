@@ -19,6 +19,7 @@ from numpy.linalg import norm
 from dataclasses import dataclass
 from warnings import warn
 from sPOD_tools import Frame, SVT, trunc_svd, shrink
+
 # ============================================================================ #
 
 
@@ -70,14 +71,15 @@ class ReturnValue:
             self.ranks = ranks
         if ranks_hist is not None:
             self.ranks_hist = ranks_hist
+
+
 # ============================================================================ #
 
 
 # ============================================================================ #
 #                                sPOD ALGORITHMS                               #
 # ============================================================================ #
-def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method,
-                param_alm=None):
+def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method, param_alm=None):
     """
     This function aggregates all the different shifted_POD_Algo() methods to
     provide a unique interface.
@@ -97,25 +99,33 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method,
     :param myparams: Parameters for the JFB algorithm
     :type myparams: sPOD_Param
 
+    :param method: Name of the method
+    :type myparams: string
+
+    :param param_alm: Parameter mu for ALM algorithm
+    :type myparams: float
+
     :return:
     :rtype: :class:`ReturnValue`
     """
-    if method == "ALM": 
+    if method == "ALM":
         return shifted_POD_ALM(
             snapshot_matrix,
             transforms,
             myparams,
-            nmodes_max=np.max(nmodes) + 10,
-            mu=param_alm)
+            nmodes_max=max(nmodes) + 50,
+            mu=param_alm,
+        )
     elif method == "BFB":
-        return shifted_POD_FB(snapshot_matrix, transforms, nmodes, myparams,
-                              method="BFB")
+        return shifted_POD_FB(
+            snapshot_matrix, transforms, nmodes, myparams, method="BFB"
+        )
     elif method == "JFB":
-        return shifted_POD_FB(snapshot_matrix, transforms, nmodes, myparams,
-                              method="JFB")
+        return shifted_POD_FB(
+            snapshot_matrix, transforms, nmodes, myparams, method="JFB"
+        )
     elif method == "J2":
-        return shifted_POD_J2(snapshot_matrix, transforms, nmodes, myparams,
-                              True)
+        return shifted_POD_J2(snapshot_matrix, transforms, nmodes, myparams)
 
 
 def shifted_POD_J2(
@@ -171,7 +181,7 @@ def shifted_POD_J2(
     ###########################
     # Error of the truncated SVD
     r_ = np.sum(nmodes)
-    (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=my_params.use_rSVD)
+    (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=myparams.use_rSVD)
     err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
     print(
         "Relative error using a truncated SVD with {:d} modes:{:4.4e}".format(
@@ -217,7 +227,7 @@ def shifted_POD_J2(
             U = q_frame.modal_system["U"]
             VT = q_frame.modal_system["VT"]
             rank = np.sum(S > 0)
-            ranks.append(rank)
+            ranks[k] = rank
             ranks_hist[k].append(rank)
         elapsed = time.perf_counter() - t
         sum_elapsed += elapsed
@@ -346,7 +356,7 @@ def shifted_POD_FB(
                 )
             S = q_frame.modal_system["sigma"]
             rank = np.sum(S > 0)
-            ranks.append(rank)
+            ranks[k] = rank
             ranks_hist[k].append(rank)
             qtilde += trafo.apply(q_frame.build_field())
             if method == "BFB":
@@ -389,12 +399,7 @@ def shifted_POD_FB(
     return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
 
 
-def shifted_POD_ALM(
-    snapshot_matrix,
-    transforms,
-    myparams,
-    nmodes_max=None,
-    mu=None):
+def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=None):
     """
     This function implements the Augmented Lagangian method (ALM).
 
@@ -453,11 +458,6 @@ def shifted_POD_ALM(
     Y = np.zeros_like(snapshot_matrix)
     norm_q = norm(reshape(q, -1))
     it = 0
-    M, N = np.shape(q)
-    if mu is None:
-        mu = N * M / (4 * np.sum(np.abs(q)))
-    if myparams.lambda_E is None:
-        myparams.lambda_E = 1 / np.sqrt(np.maximum(M, N))
     mu_inv = 1 / mu
     rel_err = 1
     res_old = 0
@@ -482,8 +482,7 @@ def shifted_POD_ALM(
                 if p != k:
                     qtemp += trafo_p.apply(frame_p.build_field())
             qk = trafo.reverse(q - qtemp - E + mu_inv * Y)
-            [U, S, VT] = SVT(qk, mu_inv*myparams.lambda_s, q_frame.Nmodes,
-                             myparams.use_rSVD)
+            [U, S, VT] = SVT(qk, mu_inv, q_frame.Nmodes, myparams.use_rSVD)
             rank = np.sum(S > 0)
             q_frame.modal_system = {
                 "U": U[:, :rank],
@@ -690,4 +689,6 @@ class sPOD_Param:
     lambda_s: float = 1e-2
     lambda_E: float = 1e-2
     total_variation_iterations: int = -1
+
+
 # ============================================================================ #

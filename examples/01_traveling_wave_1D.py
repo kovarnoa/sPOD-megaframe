@@ -2,9 +2,11 @@
 # -*- coding: utf-8 -*-
 
 """
-Created on Fri Nov 30 09:11:12 2018
+Created on Wed Mar 06 15:08:42 2024
 
-@author: philipp krah, jiahan wang
+@author: Philipp Krah, Beata Zorawski, Arthur Marmin
+
+The file provides numerical examples.
 """
 # ============================================================================ #
 #                              MODULES IMPORTATION                             #
@@ -22,6 +24,7 @@ from sPOD_algo import (
 )
 from transforms import Transform
 from plot_utils import save_fig
+
 # ============================================================================ #
 
 
@@ -90,7 +93,6 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
 
         x2 = 0.2 - shifts2
         q2 = exp(-((X - x2) ** 2) / delta**2)
-        # E = 0.1*np.random.random(np.shape(q2))
         Q = q1 + q2  # + E
         indices = np.random.choice(
             np.arange(Q.size), replace=False, size=int(Q.size * noise_percent)
@@ -108,7 +110,6 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
         c2 = dx / dt
         shifts1 = c2 * t
         for r in np.arange(1, 5):
-            # x1 = 0.25 + 0.1 * r - shifts1
             x1 = 0.5 + 0.1 * r - shifts1
             q1 = q1 + sin(2 * pi * r * T / Tmax) * exp(-((X - x1) ** 2) / delta**2)
         # second frame
@@ -124,6 +125,8 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
         shift_list = [shifts1, shifts2]
 
     return Q, shift_list, nmodes, L, dx
+
+
 # ============================================================================ #
 
 
@@ -132,15 +135,15 @@ def generate_data(Nx, Nt, case, noise_percent=0.2):
 # ============================================================================ #
 PIC_DIR = "../images/"
 SAVE_FIG = False
-case = "multiple_ranks"
+CASE = "multiple_ranks"
 # CASE = "sine_waves"
 Nx = 400  # number of grid points in x
 Nt = Nx // 2  # number of time intervals
 Niter = 500  # number of sPOD iterations
-METHOD = "ALM"
+# METHOD = "ALM"
 # METHOD = "BFB"
 # METHOD = "JFB"
-# METHOD = "J2"
+METHOD = "J2"
 # ============================================================================ #
 
 
@@ -150,7 +153,7 @@ METHOD = "ALM"
 # Clean-up
 plt.close("all")
 # Data Deneration
-fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, case)
+fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, CASE)
 ############################################
 # %% CALL THE SPOD algorithm
 ############################################
@@ -233,17 +236,19 @@ for axes in ax[:4]:
 plt.colorbar(im2)
 plt.tight_layout()
 
-# save_fig(PIC_DIR + "01_traveling_wave_1D_Frames.png",fig)
+if SAVE_FIG:
+    save_fig(PIC_DIR + "01_traveling_wave_1D_Frames.png", fig)
 plt.show()
-###########################################
 
+############################################
+# %% convergence co-moving ranks
+############################################
 
-# %%  convergence co-moving ranks
 Nx = 400
 Nt = Nx // 2  # numer of time intervalls
 Niter = 100
-case = "multiple_ranks"
-fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, case)
+CASE = "multiple_ranks"
+fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, CASE)
 qmat = np.reshape(fields, [Nx, Nt])
 data_shape = [Nx, 1, 1, Nt]
 
@@ -254,7 +259,6 @@ transfos = [
 mu = Nx * Nt / (4 * np.sum(np.abs(qmat)))
 myparams = sPOD_Param()
 myparams.maxit = Niter
-myparams.lambda_E = mu
 param_alm = None
 
 if METHOD == "ALM":
@@ -343,8 +347,72 @@ plt.colorbar(im2)
 plt.tight_layout()
 
 if SAVE_FIG:
-    save_fig(PIC_DIR + "multiple_traveling_wave_1D_Frames.png",fig)
+    save_fig(PIC_DIR + "multiple_traveling_wave_1D_Frames.png", fig)
 plt.show()
+
+############################################
+# %% parameter choice
+############################################
+Niter = 200
+Nx = 400
+Nt = Nx // 2
+CASE = "multiple_ranks"
+fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, CASE)
+qmat = np.reshape(fields, [Nx, Nt])
+data_shape = [Nx, 1, 1, Nt]
+
+linestyles = ["--", "-.", ":", "-", "-."]
+plot_list = []
+myparams.maxit = Niter
+mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat)))
+lambda_s0 = 1
+ret_list = []
+plt.close(87)
+fig, ax = plt.subplots(num=87)
+for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]:
+    mu = mu0 * fac
+    lambda_s = lambda_s0 * fac
+    # transformations with interpolation order T^k of Ord(h^5) and T^{-k} of Ord(h^5)
+    transfos = [
+        Transform(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=[5, 5]),
+        Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=[5, 5]),
+    ]
+    param_alm = None
+
+    if METHOD == "ALM":
+        param_alm = mu  # adjust for case
+    elif METHOD == "BFB":
+        myparams.lambda_s = lambda_s
+    elif METHOD == "JFB":
+        myparams.lambda_s = lambda_s
+    ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
+
+    ret_list.append(ret)
+    h = ax.semilogy(
+        np.arange(0, np.size(ret.rel_err_hist)),
+        ret.rel_err_hist,
+        linestyles[ip],
+        label="sPOD-$\mathcal{J}_1$ $\lambda=10^{%d}\lambda_0$" % int(np.log10(fac)),
+    )
+    plt.text(
+        Niter,
+        ret.rel_err_hist[-1],
+        "$(r_1,r_2)=(%d,%d)$" % (ret.ranks[0], ret.ranks[1]),
+        transform=ax.transData,
+        va="bottom",
+        ha="right",
+    )
+
+plt.legend(bbox_to_anchor=(0, 1.02, 1, 0.2), loc="lower right")
+plt.subplots_adjust(bottom=0.2, top=0.8)
+plt.tight_layout(pad=3.0)
+ax.set_xlim(-5, ax.get_xlim()[-1])
+plt.ylabel(r"relative error")
+plt.xlabel(r"iteration")
+if SAVE_FIG:
+    save_fig(PIC_DIR + "/convergence_J1_vs_J2_noise.png", fig)
+plt.show()
+
 
 ####################################################################
 # shifted RPC: DATA with noise!!!!
@@ -353,8 +421,8 @@ plt.show()
 Nx = 400
 Nt = Nx // 2  # numer of time intervalls
 Niter = 10
-case = "sine_waves_noise"
-fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, case)
+CASE = "sine_waves_noise"
+fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, CASE)
 qmat = np.reshape(fields, [Nx, Nt])
 data_shape = [Nx, 1, 1, Nt]
 
@@ -369,12 +437,17 @@ param_alm = None
 
 if METHOD == "ALM":
     param_alm = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
+    myparams.lambda_E = 1 / np.sqrt(np.maximum(Nx, Nt))
 elif METHOD == "BFB":
     myparams.lambda_s = 0.3  # adjust for case
     myparams.lambda_E = 0.0135  # adjust for case
 elif METHOD == "JFB":
     myparams.lambda_s = 0.3  # adjust for case
     myparams.lambda_E = 0.0135  # adjust for case
+elif METHOD == "J2":
+    raise Exception(
+        "J2 algorithm is not able to do a separation with noice. Choose another method for this example."
+    )
 ret_E = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
 
 
@@ -402,24 +475,9 @@ plt.xlabel("iterations")
 plt.ylabel("rank $r_k$")
 
 plt.legend()
-#
-# legend1 = plt.legend(handles=handl_list[:2], title="not noise robust",
-#                     loc='upper left', bbox_to_anchor=(0.65, 0.9), fontsize='small', frameon=False)
-# legend2 = plt.legend(handles=handl_list[2:4], title="noise robust",
-#                     loc='upper left', bbox_to_anchor=(0.65, 0.7), fontsize='small', frameon=False)
-# legend = plt.legend(handles=handl_list[4:],
-#                     loc='upper left', bbox_to_anchor=(0.65, 0.5), fontsize='small', frameon=False)
-# ax.add_artist(legend1)
-# ax.add_artist(legend2)
-#
-# left, bottom, width, height = [0.5, 0.45, 0.3, 0.35]
-# ax2 = fig.add_axes([left, bottom, width, height])
-# ax2.pcolormesh(qmat)
-# ax2.axis("off")
-# ax2.set_title(r"$\mathbf{Q}$")
 
 if SAVE_FIG:
-    save_fig(PIC_DIR + "/convergence_ranks_shifted_rPCA_noise.png",fig)
+    save_fig(PIC_DIR + "/convergence_ranks_shifted_rPCA_noise.png", fig)
 
 ###########################################
 # %%  visualize your results: sPOD frames
@@ -433,6 +491,7 @@ param_alm = None
 
 if METHOD == "ALM":
     param_alm = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
+    myparams.lambda_E = 1 / np.sqrt(np.maximum(Nx, Nt))
 elif METHOD == "BFB":
     myparams.lambda_s = 0.3  # adjust for case
     myparams.lambda_E = 0.0135  # adjust for case
@@ -499,75 +558,5 @@ plt.colorbar(im2)
 plt.tight_layout()
 
 if SAVE_FIG:
-    save_fig(PIC_DIR + "traveling_waves_noise_1D_Frames.png",fig)
-plt.show()
-
-# %% compare shifted rPCA and shifted POD
-Niter = 500
-Nx = 400
-Nt = Nx // 2
-case = "multiple_ranks"
-fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, case, noise_percent=0.125)
-qmat = np.reshape(fields, [Nx, Nt])
-data_shape = [Nx, 1, 1, Nt]
-
-linestyles = ["--", "-.", ":", "-", "-."]
-plot_list = []
-mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat)))
-lambda_s0 = 1
-ret_list = []
-plt.close(87)
-fig, ax = plt.subplots(num=87)
-for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]:
-    mu = mu0 * fac
-    lambda_s = lambda_s0 * fac
-    # transformations with interpolation order T^k of Ord(h^5) and T^{-k} of Ord(h^5)
-    transfos = [
-        Transform(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=[5, 5]),
-        Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=[5, 5]),
-    ]
-    param_alm = None
-    
-    if METHOD == "ALM":
-        param_alm = mu  # adjust for case
-    elif METHOD == "BFB":
-        myparams.lambda_s = lambda_s
-    elif METHOD == "JFB":
-        myparams.lambda_s = lambda_s
-    ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
-
-    ret_list.append(ret)
-    h = ax.semilogy(
-        np.arange(0, np.size(ret.rel_err_hist)),
-        ret.rel_err_hist,
-        linestyles[ip],
-        label="sPOD-$\mathcal{J}_1$ $\lambda=10^{%d}\lambda_0$" % int(np.log10(fac)),
-    )
-    plt.text(
-        Niter,
-        ret.rel_err_hist[-1],
-        "$(r_1,r_2)=(%d,%d)$" % (ret.ranks[0], ret.ranks[1]),
-        transform=ax.transData,
-        va="bottom",
-        ha="right",
-    )
-    # plot_list.append(h)
-# sPOD results           Xgrid - 0.1 * L) / w)
-
-# ret = shifted_POD_J2(qmat, transfos, nmodes=nmodes, eps=1e-16, Niter=Niter)
-# # %
-# h = ax.semilogy(
-#     np.arange(0, np.size(ret.rel_err_hist)),
-#     ret.rel_err_hist,
-#     "k-",
-#     label="sPOD-$\mathcal{J}_2$ $(r_1,r_2)=(%d,%d)$" % (nmodes[0], nmodes[1]),
-# )
-plt.legend(bbox_to_anchor=(0, 1.02, 1, 0.2), loc="lower right")
-plt.subplots_adjust(bottom=0.2, top=0.8)
-plt.tight_layout(pad=3.0)
-ax.set_xlim(-5, ax.get_xlim()[-1])
-plt.ylabel(r"relative error")
-plt.xlabel(r"iteration")
-if SAVE_FIG:
-    save_fig(PIC_DIR + "/convergence_J1_vs_J2_noise.png",fig)
+    save_fig(PIC_DIR + "traveling_waves_noise_1D_Frames.png", fig)
 plt.show()
