@@ -12,14 +12,15 @@ import numpy as np
 from numpy import meshgrid
 import matplotlib.pyplot as plt
 from sPOD_algo import (
-    shifted_POD_FB,
-    shifted_POD_ALM,
+    shifted_POD,
     sPOD_Param,
     give_interpolation_error,
 )
 from transforms import Transform
 from plot_utils import save_fig
+
 # ============================================================================ #
+
 
 def generate_wildlandfire_data(grid, time, snapshot, shifts):
     x = np.load(grid, allow_pickle=True)[0]
@@ -40,8 +41,9 @@ def generate_wildlandfire_data(grid, time, snapshot, shifts):
     return Q, shift_list, L, dx, Nx, Nt, nmodes
 
 
+SAVE_FIG = False
+PIC_DIR = "../images/"
 Niter = 4
-pic_dir = "../images/"
 
 fields, shift_list, L, dx, Nx, Nt, nmodes = generate_wildlandfire_data(
     f"../examples/Wildlandfire_1d/1D_Grid.npy",
@@ -51,53 +53,39 @@ fields, shift_list, L, dx, Nx, Nt, nmodes = generate_wildlandfire_data(
 )
 
 data_shape = [Nx, 1, 1, Nt]
-trafos = [
+transfos = [
     Transform(data_shape, [L], shifts=shift_list[0], dx=[dx], interp_order=5),
     Transform(data_shape, [L], shifts=shift_list[1], dx=[dx], interp_order=5),
     Transform(data_shape, [L], shifts=shift_list[2], dx=[dx], interp_order=5),
 ]
 
-interp_err = np.max([give_interpolation_error(fields, trafo) for trafo in trafos])
+interp_err = np.max([give_interpolation_error(fields, trafo) for trafo in transfos])
 print("interpolation error: %1.2e " % interp_err)
 
 qmat = np.reshape(fields, [Nx, Nt])
 
-method = "shifted_POD_ALM"
-# method = "shifted_POD_JFB"
-# method = "shifted_POD_BFB"
+# METHOD = "ALM"
+METHOD = "JFB"
+# METHOD = "BFB"
 lambda0 = 4000  # for Temperature
 # lambda0 = 27  # for supply mass
 myparams = sPOD_Param()
 myparams.maxit = Niter
+param_alm = None
+mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat)))
 
-if method == "shifted_POD_ALM":
-    myparams.use_rSVD = True
-    ret = shifted_POD_ALM(
-        qmat,
-        trafos,
-        myparams,
-        mu = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.01,
-    )
-elif method == "shifted_POD_BFB":
-    myparams = sPOD_Param(
-        maxit=Niter,
-        lambda_s=lambda0,
-        total_variation_iterations=40,
-    )
-    ret = shifted_POD_FB(qmat, trafos, nmodes, myparams, method="BFB")
-elif method == "shifted_POD_JFB":
-    myparams = sPOD_Param(
-        maxit=Niter,
-        lambda_s=lambda0,
-        total_variation_iterations=40,
-    )
-    ret = shifted_POD_FB(qmat, trafos, nmodes, myparams, method="JFB")
-
+if METHOD == "ALM":
+    param_alm = mu0 * 0.01
+elif METHOD == "BFB":
+    myparams.lambda_s = lambda0
+elif METHOD == "JFB":
+    myparams.lambda_s = lambda0
+ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
 
 sPOD_frames, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
 qf = [
     np.squeeze(np.reshape(trafo.apply(frame.build_field()), data_shape))
-    for trafo, frame in zip(trafos, ret.frames)
+    for trafo, frame in zip(transfos, ret.frames)
 ]
 
 
@@ -161,7 +149,8 @@ for axes in ax[:4]:
 plt.colorbar(im2)
 plt.tight_layout()
 
-save_fig(pic_dir + "wildlandfire_T.png", fig)
+if SAVE_FIG:
+    save_fig(PIC_DIR, fig)
 plt.show()
 
 
@@ -187,56 +176,5 @@ ax2.axis("off")
 ax2.set_title(r"$\mathbf{Q}$")
 
 plt.show()
-save_fig(pic_dir + "ranks_wildlandfire_S.png", fig)
-
-
-# %% compare shifted rPCA and shifted POD
-
-linestyles = ["--", "-.", ":", "-", "-."]
-plot_list = []
-mu0 = Nx * Nt / (4 * np.sum(np.abs(qmat)))
-lamb = 4000
-ret_list = []
-plt.close(87)
-fig, ax = plt.subplots(num=87)
-for ip, fac in enumerate([0.01, 0.1, 0, 10, 100]):  # ,400, 800]):#,800,1000]:
-    lambd = lamb * fac
-    # transformations with interpolation order T^k of Ord(h^5) and T^{-k} of Ord(h^5)
-    if method == "shifted_POD_JFB":
-        myparams = sPOD_Param(maxit=Niter, lambda_s=lambd)
-        ret = shifted_POD_FB(qmat, trafos, nmodes, myparams, method="JFB")
-    elif method == "shifted_POD_BFB":
-        myparams = sPOD_Param(maxit=Niter, lambda_s=lambd)
-        ret = shifted_POD_FB(qmat, trafos, nmodes, myparams, method="BFB")
-
-    ret_list.append(ret)
-    h = ax.semilogy(
-        np.arange(0, np.size(ret.rel_err_hist)),
-        ret.rel_err_hist,
-        linestyles[ip],
-        label="sPOD_BFB-$\mathcal{J}_1$ $\lambda_{\sigma}^0=10^{%d}+\lambda_{\sigma}$"
-        % int(np.log10(fac)),
-    )
-    plt.text(
-        Niter,
-        ret.rel_err_hist[-1],
-        "$(r_1,r_2,r_3)=(%d,%d,%d)$" % (ret.ranks[0], ret.ranks[1], ret.ranks[2]),
-        transform=ax.transData,
-        va="bottom",
-        ha="right",
-    )
-
-
-# plt.text(Niter, ret.rel_err_hist[-1], "$(r_1,r_2)=(%d,%d)$" % (nmodes[0], nmodes[1]), transform=ax.transData,
-#         va='bottom', ha="right")
-# interp_err = np.max([give_interpolation_error(fields, trafo) for trafo in trafos])
-# ax.hlines(interp_err, -5, Niter + 5, "k",linewidth=5,alpha = 0.3)
-# plt.text(10,interp_err,"$\mathcal{E}_*$",transform=ax.transData ,  va='bottom', ha="left")
-plt.legend(bbox_to_anchor=(0, 1.02, 1, 0.2), loc="lower right")
-plt.subplots_adjust(bottom=0.2, top=0.8)
-plt.tight_layout(pad=3.0)
-ax.set_xlim(-5, ax.get_xlim()[-1])
-plt.ylabel(r"relative error")
-plt.xlabel(r"iteration")
-save_fig(pic_dir + "/convergence_wildlandfire_S_sPOD_DFB.png", fig)
-plt.show()
+if SAVE_FIG:
+    save_fig(PIC_DIR + "ranks_wildlandfire_S.png", fig)
