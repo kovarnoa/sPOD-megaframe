@@ -10,22 +10,19 @@ import sys
 from sklearn.utils.extmath import randomized_svd
 import os
 
-sys.path.append("../src/sPOD/lib")
+sys.path.append("../lib")
 import numpy as np
-from numpy import meshgrid
 import matplotlib.pyplot as plt
 import matplotlib
 
 matplotlib.use("Agg")
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from sPOD_tools import (
-    shifted_POD_J2,
-    shifted_POD_FB,
-    shifted_POD_ALM,
+from sPOD_algo import (
+    shifted_POD,
     sPOD_Param,
     give_interpolation_error,
 )
 from transforms import Transform
+
 # ============================================================================ #
 
 
@@ -85,13 +82,15 @@ def polar_to_cartesian(polar_data, t, aux=None):
         )
 
     return cartesian_data
+
+
 # ============================================================================ #
 
 
 # ============================================================================ #
 #                                  MAIN PROGRAM                                #
 # ============================================================================ #
-impath = "./Wildlandfire_2d/"
+impath = "../examples/Wildlandfire_2d/"
 os.makedirs(impath, exist_ok=True)
 
 # %% Read the data
@@ -163,55 +162,46 @@ trafo_2 = Transform(
 err = give_interpolation_error(q_polar, trafo_1)
 print("Transformation interpolation error =  %4.4e " % err)
 
-method = "J2"
-# method = "ADM"
-# method = "JFB"
-# method = "BFB"
+METHOD = "J2"
+# METHOD = "ALM"
+# METHOD = "JFB"
+# METHOD = "BFB"
 
 
-transform_list = [trafo_1, trafo_2]
+transfos = [trafo_1, trafo_2]
 qmat = np.reshape(q_polar, [-1, Nt])
-if method == "J2":
+param_alm = None
+myparams = sPOD_Param()
+if METHOD == "J2":
     print("START J2")
-    myparams = sPOD_Param(gtol=1e-7, eps=1e-16, maxit=40,
-                          total_variation_iterations=40)
-    ret = shifted_POD_J2(
-        qmat,
-        transform_list,
-        nmodes=[10, 8],
-    )
-    qframes, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
+    myparams.maxit = 40
     modes_list = [5, 5]
-else:
-    if method == "ADM":
-        print("START ADM")
-        myparams = sPOD_Param(eps=1e-16, maxit=8, use_rSVD=True, isError=True,
-                              total_variation_iterations=40,
-                              lambda_E=1/np.sqrt(np.max([Nx, Ny]))*100)
-        ret = shifted_POD_ALM(
-            qmat,
-            transform_list,
-            myparams,
-            nmodes_max=100,
-            mu=np.prod(np.size(qmat, 0)) / (4 * np.sum(np.abs(qmat))) * 0.5,
-        )
-    elif method == "BFB":
-        print("START BFB")
-        myparams = sPOD_Param(
-            maxit=18,
-            lambda_s=3e4,
-            total_variation_iterations=40,
-        )
-        ret = shifted_POD_FB(qmat, transform_list, ([5, 5]), myparams, method="BFB")
-    elif method == "JFB":
-        print("START JFB")
-        myparams = sPOD_Param(
-            maxit=15,
-            lambda_s=3e4,
-            total_variation_iterations=40,
-        )
-        ret = shifted_POD_FB(qmat, transform_list, ([5, 5]), myparams, method="JFB")
+    ret = shifted_POD(qmat, transfos, modes_list, myparams, METHOD, param_alm)
 
+    qframes, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
+else:
+    if METHOD == "ALM":
+        print("START ALM")
+        myparams.maxit = 8
+        myparams.lambda_E = 1 / np.sqrt(np.max([Nx, Ny])) * 100
+        myparams.use_rSVD = True
+        param_alm = np.prod(np.size(qmat, 0)) / (4 * np.sum(np.abs(qmat))) * 0.5
+        myparams.isError = True
+        modes_list = [5, 5] + 45
+
+    elif METHOD == "BFB":
+        print("START BFB")
+        myparams.maxit = 18
+        myparams.lambda_s = 3e4
+        modes_list = [5, 5]
+
+    elif METHOD == "JFB":
+        print("START JFB")
+        myparams.maxit = 15
+        myparams.lambda_s = 3e4
+        modes_list = [5, 5]
+
+    ret = shifted_POD(qmat, transfos, modes_list, myparams, METHOD, param_alm)
     qframes, qtilde, rel_err, ranks = (
         ret.frames,
         ret.data_approx,
@@ -226,8 +216,8 @@ q_frame_2 = np.reshape(qframes[1].build_field(), newshape=data_shape)
 qtilde = np.reshape(qtilde, newshape=data_shape)
 
 # Transform the frame wise snapshots into lab frame (moving frame)
-q_frame_1_lab = transform_list[0].apply(q_frame_1)
-q_frame_2_lab = transform_list[1].apply(q_frame_2)
+q_frame_1_lab = transfos[0].apply(q_frame_1)
+q_frame_2_lab = transfos[1].apply(q_frame_2)
 
 # Shift the pre-transformed polar data to cartesian grid to visualize
 q_frame_1_cart_lab = polar_to_cartesian(q_frame_1_lab, t, aux=aux)
@@ -258,7 +248,7 @@ np.save(impath + "frame_modes.npy", modes_list, allow_pickle=True)
 
 cmap = "YlOrRd"
 plot_every = 5
-immpath = f"./plots/{method}/mixed/"
+immpath = f"./plots/{METHOD}/mixed/"
 os.makedirs(immpath, exist_ok=True)
 for n in range(Nt):
     if n % plot_every == 0:
