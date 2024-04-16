@@ -32,6 +32,7 @@ Citation
 
 Licence
 =======
+GNU GPL 3
 
 .. toctree::
    :maxdepth: 2
