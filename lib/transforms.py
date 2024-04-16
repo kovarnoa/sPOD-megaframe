@@ -23,8 +23,8 @@ import scipy.ndimage as ndimage
 # ---------------------------------------------------------------------------- #
 def lagrange(xvals, xgrid, j):
     """
-    Returns the j-th basis polynomial evaluated at xvals
-    using the grid points listed in xgrid
+    Returns the j-th basis polynomial evaluated at xvals using the grid points
+    listed in xgrid.
     """
     xgrid = np.asarray(xgrid)
     if not isinstance(xvals,list):
@@ -43,8 +43,8 @@ def lagrange(xvals, xgrid, j):
 #@njit()
 def lagrange_numba(xvals, xgrid, j):
     """
-    Returns the j-th basis polynomial evaluated at xvals
-    using the grid points listed in xgrid
+    Returns the j-th basis polynomial evaluated at xvals using the grid points
+    listed in xgrid.
     """
     xgrid = np.asarray(xgrid)
     for i,xval in enumerate([xvals]):
@@ -61,27 +61,26 @@ def meshgrid2D(x, y):
     xx = np.empty(shape=(x.size, y.size), dtype=x.dtype)
     yy = np.empty(shape=(x.size, y.size), dtype=y.dtype)
     for j in range(y.size):
-            for k in range(x.size):
-                xx[j,k] = x[k]
-                yy[j,k] = y[j]
+        for k in range(x.size):
+            xx[j,k] = x[k]
+            yy[j,k] = y[j]
     return yy, xx
 
 #@njit()
 def compute_general_shift_matrix_numba( shifts, domain_size, spacings, Ngrid, Ix, Iy):
     """
+    interpolation scheme        lagrange_idx(x)= (x-x_{idx-1})/(x_idx - x_0)+
+    -1      0   x    1       2                    ...+(x-x_{idx+2})/(x_idx - x_{idx+2})
+     +      +   x    +       +
+    idx_m1  idx_0    idx_1   idx_2
+    =idx_0-1        =idx_0+1
+
     :param shifts: shift(x_i,t_j) assumes an array of size i=0,...,Nx -1 ; j=0,...,Nt
     :param domain_length:
     :param spacings:
     :param Npoints:
     :return:
     """
-
-    ''' interpolation scheme        lagrange_idx(x)= (x-x_{idx-1})/(x_idx - x_0)+
-    -1      0   x    1       2                    ...+(x-x_{idx+2})/(x_idx - x_{idx+2})
-     +      +   x    +       +
-   idx_m1  idx_0    idx_1   idx_2
-  =idx_0-1        =idx_0+1
-   '''
     col = [np.int(x) for x in range(0)]
     row = [np.int(x) for x in range(0)]
     val = [np.float(x) for x in range(0)]
@@ -131,9 +130,9 @@ class Transform:
     """
     This class implements a transformation associated to a frame.
     A transformation can be implemented as a
-      + shift: T^c q(x,t) = q(x-ct,t)
-      + rotation: T^w q(x,y,t) = q(R(omega)(x,y),t) where R(omega) is the
-                  rotation matrix
+    + shift: T^c q(x,t) = q(x-ct,t)
+    + rotation: T^w q(x,y,t) = q(R(omega)(x,y),t) where R(omega) is the
+    rotation matrix
 
     :param Ngrid: 
     :type Ngrid: List[int]
@@ -188,7 +187,7 @@ class Transform:
                     self.shifts_pos =  shifts    # dim x Ntime shiftarray (one element for one time instance)
                     one = np.ones_like(shifts)
                     one[0,:] = dx[0]
-                    one[1,:] = 0#dx[1]
+                    one[1,:] = 0  #dx[1]
                     self.shifts_neg = -shifts  # dim x Ntime shiftarray (one element for one time instance)
                 else: # own implementation for shifts: is much faster then ndimage
                     self.shifts_pos, self.shifts_neg = self.init_shifts_2D(dx, domain_size, self.Ngrid, shifts, Nvar= self.Nvar)
@@ -214,13 +213,17 @@ class Transform:
     def apply(self, field):
         """
         This function returns the shifted field.
-        $q(x-s,t)=T^s[q(x,t)]$
-        here the shift is simply s=c*t
-        In the default case where c= ~velocity of the frame~,
-        the field is shifted back to the original frame.
-        ( You may call it the labratory frame)
-        Before we shift the frame has to be put togehter in the co-moving
-        frame. This can be done by build_field().
+
+        .. math::
+
+            q(x-s,t) = T^{s}[q(x,t)]
+
+        Here, the shift is simply :math:`s=ct`
+        In the default case where c= ~velocity of the frame~, the field is
+        shifted back to the original frame.
+        (You may call it the laboratory frame)
+        Before we perform the shift, the frame has to be put together in
+        the co-moving frame. This can be done by build_field().
 
         :param field: 
         :type field:
@@ -247,14 +250,6 @@ class Transform:
 
     def reverse(self, field):
         """
-        This function returns the shifted field.
-        $q(x-s,t)=T^s[q(x,t)]$
-        here the shift is simply s=c*t
-        In the default case where c= ~velocity of the frame~,
-        the field is shifted back to the original frame.
-        ( You may call it the labratory frame)
-        Before we shift the frame has to be put togehter in the co-moving
-        frame. This can be done by build_field().
         """
         input_shape = np.shape(field)
         field = reshape(field, self.data_shape)
@@ -266,7 +261,6 @@ class Transform:
             field = self.shift(field,self.shifts_neg)                   #shift back and return
             ftrans = self.rotate(field,-self.rotations)               #rotate back
             # ~ return self.shift(auxField,self.shiftMatrices_neg)          #shift back and return
-
         elif self.transfo_type == "identity":
             ftrans = field
         else:
@@ -281,10 +275,9 @@ class Transform:
         here the shift is simply s=c*t
         In the default case where c= ~velocity of the frame~,
         the field is shifted back to the original frame.
-        ( You may call it the labratory frame)
+        (You may call it the laboratory frame)
         Before we shift the frame has to be put togehter in the co-moving
         frame. This can be done by build_field().
-        
         """
         Ntime = np.size(field,-1)
         field_shift = np.zeros_like(field)
@@ -302,10 +295,9 @@ class Transform:
         here the shift is simply s=c*t
         In the default case where c= ~velocity of the frame~,
         the field is shifted back to the original frame. 
-        ( You may call it the labratory frame)
+        (You may call it the laboratory frame)
         Before we shift the frame has to be put togehter in the co-moving
         frame. This can be done by build_field().
-        
         """
         input_shape = np.shape(field)
         Ntime = np.size(field,-1)
@@ -321,9 +313,9 @@ class Transform:
             field_shift[...,it] = ndimage.shift(q,DeltaS,mode='grid-wrap')
         return np.reshape(field_shift,input_shape)
     # Note (MI): the shifts need to be scaled w.r.t the image and are reversed 
-    
+
+
     def rotate(self, field, rotations):
-        
         input_shape = np.shape(field)
         Ntime = np.size(field,-1)
         field_rot = np.zeros([*self.Ngrid,Ntime])
@@ -337,7 +329,6 @@ class Transform:
 
     def init_shifts_2D(self, dX, domain_size, Ngrid, shifts, Nvar = 1):
         ### implement pos shift matrix ###
-
         print("init shift matrix ...")
 
         if not isinstance(self.interp_order, list):
@@ -402,7 +393,6 @@ class Transform:
             for shiftmat in shift_neg_list:
                 shift_neg_mat_list.append(sparse.kron(shiftmat, sparse.eye(Nvar)))
 
-
         #
         # shiftx_pos = shifts[0,...]
         # shifty_pos = shifts[1,...]
@@ -410,7 +400,6 @@ class Transform:
         return shift_pos_mat_list, shift_neg_mat_list
 
     def init_shifts_1D(self, dx, Lx, Nx, shifts, Nvar=1):
-
         # If the interp_order is a list we take the first value for the forward transform T^k
         # and the second element for the backward transform T^{-k}
         # This property is used in the sPOD-J2 algorithm, since the redistribution/projection step allows lower
@@ -465,8 +454,6 @@ class Transform:
         return rotation_pos_mat_list, rotation_neg_mat_list
         
     def compute_shift_matrix(self,shift_list, domain_length, spacing, Npoints, order=3):
-        from numpy import floor
-        
         Mat = []
         domain_size = self.domain_size
         for it,shift in enumerate(shift_list):
@@ -482,7 +469,7 @@ class Transform:
            '''
            
             # shift is close to some discrete index:
-            idx_0 = floor(shift/spacing)
+            idx_0 = np.floor(shift/spacing)
             # save all neighbours
             if order == 5:
                 idx_list = np.asarray([idx_0 - 2,idx_0 - 1, idx_0, idx_0 + 1, idx_0 + 2, idx_0 + 3], dtype=np.int32)
@@ -532,10 +519,12 @@ class Transform:
         ''' interpolation scheme        lagrange_idx(x)= (x-x_{idx-1})/(x_idx - x_0)+
         -1      0   x    1       2                    ...+(x-x_{idx+2})/(x_idx - x_{idx+2})
          +      +   x    +       +
-       idx_m1  idx_0    idx_1   idx_2
-      =idx_0-1        =idx_0+1
+        idx_m1  idx_0    idx_1   idx_2
+        =idx_0-1        =idx_0+1
        '''
-        from joblib import Parallel, delayed # function has to be parallelized since it take a long time to set up a general transformation matrix
+        from joblib import Parallel, delayed
+        # Function has to be parallelized since it take a long time to set up a
+        # general transformation matrix
 
         Nt = np.size(shifts, -1)
         Nx, Ny = Ngrid
@@ -580,8 +569,6 @@ class Transform:
     #         Since the data only exists on discrete time points, we have to interpolate!
     #         The interpolation stencil ist defined in M(omega(t))
     #     """
-    #     from numpy import floor
-        
     #     Mat = []
     #     for shift in rotations:
             
@@ -599,7 +586,7 @@ class Transform:
     #        '''
            
     #         # shift is close to some discrete index:
-    #         idx_0 = floor(shift/spacing)
+    #         idx_0 = np.floor(shift/spacing)
     #         # save all neighbours
     #         idx_list = np.asarray([idx_0-1, idx_0, idx_0+1, idx_0+2],dtype=np.int32)
             

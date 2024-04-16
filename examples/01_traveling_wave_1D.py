@@ -15,7 +15,7 @@ import sys
 
 sys.path.append("../lib")
 import numpy as np
-from numpy import exp, mod, meshgrid, cos, sin, exp, pi
+from numpy import mod, meshgrid, cos, sin, exp, pi
 import matplotlib.pyplot as plt
 from sPOD_algo import (
     shifted_POD,

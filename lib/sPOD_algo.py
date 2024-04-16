@@ -91,7 +91,7 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method, param_alm
     :type snapshot_matrix: :class:`numpy.ndarray` (2-dimensional)
 
     :param transforms: List of transformations associated with the co-moving fields.
-    :type transforms: List[Transform]
+    :type transforms: list[Transform]
 
     :param nmodes: Number of modes to use in each frame
     :type nmodes: integer
@@ -144,7 +144,7 @@ def shifted_POD_J2(
     :type snapshot_matrix: :class:`numpy.ndarray` (2-dimensional)
 
     :param transforms: List of transformations associated with the co-moving fields.
-    :type transforms: List[Transform]
+    :type transforms: list[Transform]
 
     :param nmodes: Number of modes to use in each frame
     :type nmodes: integer
@@ -262,7 +262,7 @@ def shifted_POD_FB(
     :type snapshot_matrix: :class:`numpy.ndarray` (2-dimensional)
 
     :param transforms: List of transformations associated with the co-moving fields.
-    :type transforms: List[Transform]
+    :type transforms: list[Transform]
 
     :param nmodes: Number of modes to use in each frame
     :type nmodes: integer
@@ -410,7 +410,7 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
     :type snapshot_matrix: :class:`numpy.ndarray` (2-dimensional)
 
     :param transforms: List of transformations associated with the co-moving fields.
-    :type transforms: List[Transform]
+    :type transforms: list[Transform]
 
     :param myparams: Parameters for ALM algorithm
     :type myparams: class:`sPOD_Param`
@@ -418,8 +418,8 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
     :param nmodes_max: Maximal number of modes allowed in each frame, default is
                        the number of snapshots :math:`N`.
                        Note: it is good to give a number large enough in order to
-                             get the error down but smaller than :math:`N`.
-                             This will increase the performance of the algorith.
+                       get the error down but smaller than :math:`N`.
+                       This will increase the performance of the algorith.
 
     :param mu: Parameter of the augmented Lagrangian (i.e. weight of the
                quadratic term).
@@ -537,9 +537,8 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
                 *ranks
             )
 
-        if it > 5 and np.abs(rel_err_list[-1] - rel_err_list[-4]) < myparams.gtol * abs(
-            rel_err_list[-1]
-        ):
+        if it > 5 and np.abs(rel_err_list[-1] - rel_err_list[-4]) \
+           < myparams.gtol * abs(rel_err_list[-1]):
             break
 
     qtilde = 0
@@ -557,7 +556,12 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
 
 
 def force_constraint(qframes, transforms, q, Niter=1, alphas=None):
-    """This function enforces the constraint Q = sum_k T^k Q^k"""
+    """This function enforces the constraint 
+    
+    .. math::
+
+        Q = sum_k T^k Q^k
+    """
     norm_q = norm(reshape(q, -1))
     qtilde = np.zeros_like(q)
     if alphas == None:
