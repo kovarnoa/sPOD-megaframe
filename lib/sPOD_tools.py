@@ -222,7 +222,7 @@ class Frame:
         Uother = other.modal_system["U"]
         new.modal_system["U"] = np.concatenate([Uself, Uother], axis=1)
 
-        # combine right singular vecotrs
+        # combine right singular vectors
         VTself = self.modal_system["VT"]
         VTother = other.modal_system["VT"]
         new.modal_system["VT"] = np.concatenate([VTself, VTother], axis=0)
@@ -400,6 +400,7 @@ def shrink(x, gamma):
 
     .. math:: 
 
+        \DeclareMathOperator*{\argmin}{arg\,min}
         y = \argmin_{z\in\mathcal{H}} \ell_{1}(z) + \frac{1}{2\gamma}\|z-x\|_{2}^{2} \, .
 
     :param x: point at which the proximal operator is computed.
@@ -425,6 +426,7 @@ def SVT(X, gamma, nmodes_max=None, use_rSVD=False):
 
     .. math::
 
+        \DeclareMathOperator*{\argmin}{arg\,min}
         Y = \argmin_{Z\in\mathbb{R}^{N,M}} \|z\|_{*} + \frac{1}{2\gamma}\|Z-X\|_{2}^{2} \, .
 
     SVT can be performed on a truncated SVD of :math:`X` by setting the correct
