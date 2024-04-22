@@ -54,6 +54,39 @@ cm = farge_colormap_multi(etalement_du_zero=0.2, limite_faible_fort=0.5)
 
 
 ###############################################################################
+def save_frames(fname, frames, error_matrix=None):
+    fname_base, old_ext = os.path.splitext(fname)
+    ext = ".pkl"
+    for k, frame in enumerate(frames):
+        fname_frame = fname_base + "_%.2d" % k + ext
+        print("frame %2d saved to: " % k, fname_frame)
+        frame.save(fname_frame)
+    if error_matrix is not None:
+        fname_error_matrix = fname_base + "_error_mat.npy"
+        np.save(fname_error_matrix, error_matrix)
+
+
+def load_frames(fname, Nframes, load_ErrMat=False):
+    fname_base, old_ext = os.path.splitext(fname)
+    ext = ".pkl"
+
+    # load frames
+    frame_list = []
+    for k in range(Nframes):
+        fname_frame = fname_base + "_%.2d" % k + ext
+        print("frame %2d loaded: " % k, fname_frame)
+        newframe = frame(fname=fname_frame)
+        frame_list.append(newframe)
+
+    # load sparse error matrix
+    fname_error_matrix = fname_base + "_error_mat.npy"
+    if load_ErrMat and os.path.isfile(fname_error_matrix):
+        E = np.load(fname_error_matrix)
+        return frame_list, E
+    else:
+        return frame_list
+
+
 def path(mu_vec, time, freq):
     return mu_vec[0] * cos(2 * pi * freq * time)
 
@@ -126,7 +159,7 @@ def compute_offline_errors(
         lambd0 = 1 / np.sqrt(np.maximum(M, N))
     myparams = sPOD_Param()
     myparams.isError = True
-    myparams.maxiter = Niter
+    myparams.maxit = Niter
     myparams.eps = eps
     param_alm = None
     err_dict = {}
@@ -135,8 +168,10 @@ def compute_offline_errors(
             sPOD_log_dir = ddir + "/ALM/" + case + "_mu0_%.3e" % mu0 + "/"
             if skip_existing and os.path.exists(sPOD_log_dir):
                 Nframes = len(transfos)
-                frame = Frame(Nmodes=Nframes)
-                qframes, E = frame.load(sPOD_log_dir + "frame.npy")
+                frame = Frame(Nmodes=Nframes, fname=sPOD_log_dir + "frame.npy")
+                qframes, E = load_frames(
+                    sPOD_log_dir + "frame.npy", Nframes, load_ErrMat=True
+                )
                 qtilde = build_all_frames(qframes)
             else:
                 param_alm = mu0
@@ -151,8 +186,7 @@ def compute_offline_errors(
                     ret.rel_err_hist,
                 )
                 E = np.reshape(ret.error_matrix, data_shape)
-                frame = Frame(field=qframes, fname=sPOD_log_dir + "frame.npy")
-                # frame.save(sPOD_log_dir + "frame.npy")
+                save_frames(sPOD_log_dir + "frame.npy", qframes, error_matrix=E)
 
             log_save = sPOD_log_dir + "err_mat_ALM.out"
             nModes = np.asarray([frame.Nmodes for frame in qframes])
@@ -184,8 +218,7 @@ def compute_offline_errors(
                 sPOD_log_dir = ddir + "/sPOD/" + case + "_ranks_" + rank_text + "/"
                 if skip_existing and os.path.exists(sPOD_log_dir):
                     Nframes = len(transfos)
-                    frame = Frame()
-                    qframes = frame.load(
+                    qframes = load_frames(
                         sPOD_log_dir + "frame.npy", Nframes, load_ErrMat=False
                     )
                     qtilde = build_all_frames(qframes)
@@ -204,8 +237,7 @@ def compute_offline_errors(
                         np.reshape(ret.data_approx, data_shape),
                         ret.rel_err_hist,
                     )
-                    frame = Frame()
-                    frame.save(sPOD_log_dir + "frame.npy", qframes)
+                    save_frames(sPOD_log_dir + "frame.npy", qframes)
 
                 rel_err = (
                     np.linalg.norm(np.reshape(qtilde, np.shape(q)) - q, ord="fro")
@@ -217,7 +249,7 @@ def compute_offline_errors(
                     for ir, r in enumerate(nModes):
                         err_mat[dof, ir] = r
 
-            log_save = sPOD_log_dir + "err_mat_sPOD.out"
+            log_save = sPOD_log_dir + "err_mat_J2.out"
 
             err_dict[method] = err_mat
             np.savetxt(log_save, err_mat, delimiter=",")
@@ -227,8 +259,7 @@ def compute_offline_errors(
                 BFB_log_dir = ddir + "/BFB/" + case + "_ranks_" + rank_text + "/"
             if skip_existing and os.path.exists(BFB_log_dir):
                 Nframes = len(transfos)
-                frame = Frame()
-                qframes, E = frame.load(
+                qframes, E = load_frames(
                     BFB_log_dir + "frame.npy", Nframes, load_ErrMat=True
                 )
                 qtilde = build_all_frames(qframes)
@@ -281,7 +312,7 @@ ux_list = []
 uy_list = []
 mu_vec_list = [[16]]
 ux, uy, mask, p, time, Ngrid, dx, L = read_ACM_dat(
-    ddir + "/ALL_2cyls_mu16.mat", sample_fraction=4, time_sample_fraction=2
+    ddir + "/ALL_2cyls_mu16.mat", sample_fraction=8, time_sample_fraction=4
 )  # scipy.io.loadmat(ddir + "/ALL_2cyls_mu16.mat")
 time_sum = time
 # %%
@@ -414,7 +445,7 @@ else:
 #                        velocity ux
 # %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 q = np.reshape(ux, [-1, Nt])
-Niter = 1000
+Niter = 10
 [N, M] = np.shape(q)
 mu0 = N * M / (4 * np.sum(np.abs(q))) * 0.001
 lambd0 = 1 / np.sqrt(np.maximum(M, N)) * 20
@@ -430,7 +461,7 @@ rel_err_dict = compute_offline_errors(
     case="ux",
 )
 err_mat_ALM = rel_err_dict["ALM"]
-err_mat_sPOD = rel_err_dict["J2"]
+err_mat_J2 = rel_err_dict["J2"]
 err_mat_BFB = rel_err_dict["BFB"]
 # %%
 nModes = err_mat_ALM[-1, :2]
@@ -451,18 +482,20 @@ err_POD.insert(0, 1)
 nmodes_max_show = 190
 
 err_mat_ALM = rel_err_dict["ALM"]
-err_mat_sPOD = rel_err_dict["J2"]
+err_mat_J2 = rel_err_dict["J2"]
 err_mat_BFB = rel_err_dict["BFB"]
-nModes = (np.max(err_mat_sPOD[:, :2]) + 1) * 2
+nModes = (np.max(err_mat_J2[:, :2]) + 1) * 2
 maxrank = int(np.sum(nModes))
 [_, ss, _] = np.linalg.svd(q, full_matrices=False)
 err_POD = list(np.sqrt(1 - (np.cumsum(ss[:-1] ** 2)) / np.sum(ss[:-1] ** 2)))
 err_POD.insert(0, 1)
 fig, ax = plt.subplots(num=201)
-err_mat_ALM[1, -1] = err_mat_sPOD[1, -1]
+print(err_mat_ALM)
+print(err_mat_J2)
+err_mat_ALM[1, -1] = err_mat_J2[1, -1]
 ax.semilogy(err_mat_ALM[:-1, -1], "*", label="ADM")
 # ax.semilogy(err_mat_ALM2[:-1,-1], '*', label="sPOD-$\mathcal{J}_1$")
-ax.semilogy(err_mat_sPOD[:-1, -1], "+", label="J2")
+ax.semilogy(err_mat_J2[:-1, -1], "+", label="J2")
 ax.semilogy(err_POD[: maxrank - 1], "x", label="POD")
 ax.semilogy(err_mat_BFB[:-1, -1], "o", label="BFB")
 plt.legend(loc=1)
@@ -505,7 +538,7 @@ idx_show = [
 dofs_show = [DOFs[i] for i in idx_show]
 ePOD = [err_POD[i] for i in idx_show]
 eBFB = [err_mat_BFB[i, -1] for i in idx_show]
-esPOD = [err_mat_sPOD[i, -1] for i in idx_show]
+esPOD = [err_mat_J2[i, -1] for i in idx_show]
 eALM = [err_mat_ALM[i, -1] for i in idx_show]
 
 table = np.stack((dofs_show, esPOD, eALM, eBFB, ePOD), axis=1)
