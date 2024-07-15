@@ -79,7 +79,7 @@ class ReturnValue:
 # ============================================================================ #
 #                                sPOD ALGORITHMS                               #
 # ============================================================================ #
-def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method, param_alm=None):
+def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method, param_alm=None, qt_frames=None):
     """
     This function aggregates all the different shifted_POD_Algo() methods to
     provide a unique interface.
@@ -115,6 +115,7 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method, param_alm
             myparams,
             nmodes_max=max(nmodes) + 50,
             mu=param_alm,
+            qt_frames=qt_frames
         )
     elif method == "BFB":
         return shifted_POD_FB(
@@ -399,7 +400,7 @@ def shifted_POD_FB(
     return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
 
 
-def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=None):
+def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=None, qt_frames=None):
     """
     This function implements the Augmented Lagangian method (ALM).
 
@@ -451,7 +452,7 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
     else:
         nmodes = [nmodes_max]
     qtilde_frames = [
-        Frame(transfo, qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
+        Frame(transfo, field=qt_frames[k], Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
     ]
 
     q = snapshot_matrix.copy()
