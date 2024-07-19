@@ -451,9 +451,10 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
         nmodes = list([nmodes_max]) * Nframes
     else:
         nmodes = [nmodes_max]
-    qtilde_frames = [
-        Frame(transfo, field=qt_frames[k], Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
-    ]
+    if qt_frames is None:
+            qtilde_frames = [Frame(transfo, field=qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)]
+    else:
+            qtilde_frames = [Frame(transfo, field=qt_frames[k], Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)]
 
     q = snapshot_matrix.copy()
     Y = np.zeros_like(snapshot_matrix)
