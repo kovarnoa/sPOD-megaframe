@@ -4,6 +4,8 @@ This is a python tool for decomposing and model reduction for multiple transport
 phenomena.
 It is written in python3.
 
+![sPOD-example](https://github.com/MOR-transport/sPOD/blob/ProxBranch/sPOD_vortex-shedding.gif)
+
 Requirements
 ------------
 #. In order to run `sPOD` package, the following libraries are required:
