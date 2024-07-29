@@ -140,10 +140,10 @@ CASE = "multiple_ranks"
 Nx = 400  # number of grid points in x
 Nt = Nx // 2  # number of time intervals
 Niter = 500  # number of sPOD iterations
-# METHOD = "ALM"
-# METHOD = "BFB"
-# METHOD = "JFB"
-METHOD = "J2"
+METHOD = "ALM"
+#METHOD = "BFB"
+#METHOD = "JFB"
+#METHOD = "J2"
 # ============================================================================ #
 
 
@@ -153,7 +153,7 @@ METHOD = "J2"
 # Clean-up
 plt.close("all")
 # Data Deneration
-fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, CASE)
+fields, shift_list, nmodes_exact, L, dx = generate_data(Nx, Nt, CASE)
 ############################################
 # %% CALL THE SPOD algorithm
 ############################################
@@ -172,6 +172,7 @@ lambd0 = 1 / np.sqrt(np.maximum(Nx, Nt))
 myparams = sPOD_Param()
 myparams.maxit = Niter
 param_alm = None
+nmodes = None
 
 if METHOD == "ALM":
     param_alm = mu0  # adjust for case
@@ -179,7 +180,9 @@ elif METHOD == "BFB":
     myparams.lambda_s = 0.3  # adjust for case
 elif METHOD == "JFB":
     myparams.lambda_s = 0.4  # adjust for case
-ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
+elif METHOD == "J2":
+    nmodes = nmodes_exact
+ret = shifted_POD(qmat, transfos, myparams, METHOD, param_alm, nmodes=nmodes)
 
 sPOD_frames, qtilde, rel_err = ret.frames, ret.data_approx, ret.rel_err_hist
 qf = [
@@ -248,7 +251,7 @@ Nx = 400
 Nt = Nx // 2  # numer of time intervalls
 Niter = 100
 CASE = "multiple_ranks"
-fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, CASE)
+fields, shift_list, nmodes_exact, L, dx = generate_data(Nx, Nt, CASE)
 qmat = np.reshape(fields, [Nx, Nt])
 data_shape = [Nx, 1, 1, Nt]
 
@@ -260,6 +263,7 @@ mu = Nx * Nt / (4 * np.sum(np.abs(qmat)))
 myparams = sPOD_Param()
 myparams.maxit = Niter
 param_alm = None
+nmodes = None
 
 if METHOD == "ALM":
     param_alm = mu  # adjust for case
@@ -267,15 +271,17 @@ elif METHOD == "BFB":
     myparams.lambda_s = 0.3  # adjust for case
 elif METHOD == "JFB":
     myparams.lambda_s = 0.4  # adjust for case
-ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
+elif METHOD == "J2":
+    nmodes = nmodes_exact
+ret = shifted_POD(qmat, transfos, myparams, METHOD, param_alm, nmodes=nmodes)
 
 xlims = [-1, Niter]
 plt.close(11)
 fig, ax = plt.subplots(num=11)
 plt.plot(ret.ranks_hist[0], "+", label="$\mathrm{rank}(\mathbf{Q}^1)$")
 plt.plot(ret.ranks_hist[1], "x", label="$\mathrm{rank}(\mathbf{Q}^2)$")
-plt.plot(xlims, [nmodes[0], nmodes[0]], "k--", label="exact rank $r_1=%d$" % nmodes[0])
-plt.plot(xlims, [nmodes[1], nmodes[1]], "k-", label="exact rank $r_2=%d$" % nmodes[1])
+plt.plot(xlims, [nmodes_exact[0], nmodes_exact[0]], "k--", label="exact rank $r_1=%d$" % nmodes_exact[0])
+plt.plot(xlims, [nmodes_exact[1], nmodes_exact[1]], "k-", label="exact rank $r_2=%d$" % nmodes_exact[1])
 plt.xlim(xlims)
 plt.xlabel("iterations")
 plt.ylabel("rank $r_k$")
@@ -357,7 +363,7 @@ Niter = 200
 Nx = 400
 Nt = Nx // 2
 CASE = "multiple_ranks"
-fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, CASE)
+fields, shift_list, nmodes_exact, L, dx = generate_data(Nx, Nt, CASE)
 qmat = np.reshape(fields, [Nx, Nt])
 data_shape = [Nx, 1, 1, Nt]
 
@@ -385,7 +391,9 @@ for ip, fac in enumerate([0.0001, 0.1, 1, 10, 1000]):  # ,400, 800]):#,800,1000]
         myparams.lambda_s = lambda_s
     elif METHOD == "JFB":
         myparams.lambda_s = lambda_s
-    ret = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
+    elif METHOD == "J2":
+        nmodes = nmodes_exact
+    ret = shifted_POD(qmat, transfos, myparams, METHOD, param_alm, nmodes=nmodes)
 
     ret_list.append(ret)
     h = ax.semilogy(
@@ -422,7 +430,7 @@ Nx = 400
 Nt = Nx // 2  # numer of time intervalls
 Niter = 10
 CASE = "sine_waves_noise"
-fields, shift_list, nmodes, L, dx = generate_data(Nx, Nt, CASE)
+fields, shift_list, nmodes_exact, L, dx = generate_data(Nx, Nt, CASE)
 qmat = np.reshape(fields, [Nx, Nt])
 data_shape = [Nx, 1, 1, Nt]
 
@@ -434,6 +442,7 @@ myparams = sPOD_Param()
 myparams.maxit = Niter
 myparams.isError = True
 param_alm = None
+nmodes = None
 
 if METHOD == "ALM":
     param_alm = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
@@ -445,10 +454,11 @@ elif METHOD == "JFB":
     myparams.lambda_s = 0.3  # adjust for case
     myparams.lambda_E = 0.0135  # adjust for case
 elif METHOD == "J2":
+    nmodes = nmodes_exact
     raise Exception(
         "J2 algorithm is not able to do a separation with noice. Choose another method for this example."
     )
-ret_E = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
+ret_E = shifted_POD(qmat, transfos, myparams, METHOD, param_alm,nmodes=nmodes)
 
 
 xlims = [-1, Niter]
@@ -465,10 +475,10 @@ h = plt.plot(
 h = plt.plot(ret_E.ranks_hist[0], "<:", label="$\mathrm{rank}(\mathbf{Q}^1)$ robust")
 h = plt.plot(ret_E.ranks_hist[1], "x:", label="$\mathrm{rank}(\mathbf{Q}^2)$ robust")
 h = plt.plot(
-    xlims, [nmodes[0], nmodes[0]], "k--", label="exact rank $r_1=%d$" % nmodes[0]
+    xlims, [nmodes_exact[0], nmodes_exact[0]], "k--", label="exact rank $r_1=%d$" % nmodes_exact[0]
 )
 h = plt.plot(
-    xlims, [nmodes[1], nmodes[1]], "k-", label="exact rank $r_2=%d$" % nmodes[1]
+    xlims, [nmodes_exact[1], nmodes_exact[1]], "k-", label="exact rank $r_2=%d$" % nmodes_exact[1]
 )
 plt.xlim(xlims)
 plt.xlabel("iterations")
@@ -488,6 +498,7 @@ myparams = sPOD_Param()
 myparams.maxit = Niter
 myparams.isError = True
 param_alm = None
+Nmodes = None
 
 if METHOD == "ALM":
     param_alm = Nx * Nt / (4 * np.sum(np.abs(qmat))) * 0.1
@@ -497,8 +508,11 @@ elif METHOD == "BFB":
     myparams.lambda_E = 0.0135  # adjust for case
 elif METHOD == "JFB":
     myparams.lambda_s = 0.3  # adjust for case
-    myparams.lambda_E = 0.0135  # adjust for case
-ret_E = shifted_POD(qmat, transfos, nmodes, myparams, METHOD, param_alm)
+    myparams.lambda_E = 0.0135  # adjust for case el
+if METHOD == "J2":
+        nmodes = nmodes_exact
+
+ret = shifted_POD(qmat, transfos, myparams, METHOD, param_alm, nmodes=nmodes)
 
 sPOD_frames, qtilde, rel_err = ret_E.frames, ret_E.data_approx, ret.rel_err_hist
 qf = [

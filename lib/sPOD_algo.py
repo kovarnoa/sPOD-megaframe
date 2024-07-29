@@ -79,7 +79,7 @@ class ReturnValue:
 # ============================================================================ #
 #                                sPOD ALGORITHMS                               #
 # ============================================================================ #
-def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method, param_alm=None, qt_frames=None):
+def shifted_POD(snapshot_matrix, transforms, myparams, method, param_alm=None, nmodes=None, qt_frames=None):
     """
     This function aggregates all the different shifted_POD_Algo() methods to
     provide a unique interface.
@@ -113,17 +113,17 @@ def shifted_POD(snapshot_matrix, transforms, nmodes, myparams, method, param_alm
             snapshot_matrix,
             transforms,
             myparams,
-            nmodes_max=max(nmodes) + 50,
+            nmodes_max=nmodes,
             mu=param_alm,
             qt_frames=qt_frames
         )
     elif method == "BFB":
         return shifted_POD_FB(
-            snapshot_matrix, transforms, nmodes, myparams, method="BFB"
+            snapshot_matrix, transforms, myparams, nmodes_max=nmodes, method="BFB"
         )
     elif method == "JFB":
         return shifted_POD_FB(
-            snapshot_matrix, transforms, nmodes, myparams, method="JFB"
+            snapshot_matrix, transforms, myparams, nmodes_max=nmodes, method="JFB"
         )
     elif method == "J2":
         return shifted_POD_J2(snapshot_matrix, transforms, nmodes, myparams)
@@ -249,8 +249,8 @@ def shifted_POD_J2(
 def shifted_POD_FB(
     snapshot_matrix,
     transforms,
-    nmodes,
     myparams,
+    nmodes_max=None,
     method="BFB",
 ):
     """
@@ -295,8 +295,13 @@ def shifted_POD_FB(
     if myparams.isError:
         E = np.zeros_like(snapshot_matrix)
     Nframes = len(transforms)
-    if np.size(nmodes) != Nframes:
-        nmodes = list([nmodes]) * Nframes
+    # make a list of the number of maximal ranks in each frame
+    if not np.all(nmodes_max):  # check if array is None, if so set nmodes_max onto N
+        nmodes_max = np.min(np.shape(snapshot_matrix)) # use the smallest dimension beacuse after this singular values will be 0
+    if np.size(nmodes_max) != Nframes:
+        nmodes = list([nmodes_max]) * Nframes
+    else:
+        nmodes = [nmodes_max]
     qtilde_frames = [
         Frame(transfo, qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
     ]
@@ -446,11 +451,12 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
 
     # make a list of the number of maximal ranks in each frame
     if not np.all(nmodes_max):  # check if array is None, if so set nmodes_max onto N
-        nmodes_max = np.max(np.shape(snapshot_matrix))
+        nmodes_max = np.min(np.shape(snapshot_matrix)) # use the smallest dimension beacuse after this singular values will be 0
     if np.size(nmodes_max) != Nframes:
         nmodes = list([nmodes_max]) * Nframes
     else:
         nmodes = [nmodes_max]
+     
     if qt_frames is None:
             qtilde_frames = [Frame(transfo, field=qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)]
     else:
