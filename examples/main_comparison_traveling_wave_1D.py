@@ -43,16 +43,16 @@ PLOT_VT = True
 #CASE = "three_cross_waves"        
 #CASE = "sine_waves"
 #CASE = "sine_waves_noise"
-#CASE = "multiple_ranks"
-CASE = "non_cross_mult_ranks"
+CASE = "multiple_ranks"
+#CASE = "non_cross_mult_ranks"
 
 Nx = 400        # number of grid points in x
 Nt = Nx // 2    # number of time intervals
-Niter = 500      # number of sPOD iterations
+Niter = 100      # number of sPOD iterations
 
 #VARIANT = "ALM"
-VARIANT = "JFB"
-#VARIANT = "J2"
+#VARIANT = "JFB"
+VARIANT = "J2"
 
 # ============================================================================ #
 
@@ -62,8 +62,9 @@ VARIANT = "JFB"
 # ============================================================================ #
 # Clean-up
 plt.close("all")
-# Data Deneration
+# Data Generation
 fields, shift_list, nmodes_exact, L, dx = generate_data(Nx, Nt, CASE)
+
 ############################################
 # %% CALL THE SPOD algorithm
 ############################################
@@ -92,15 +93,18 @@ nmodes = None
 # %% run normal variant
 ############################################
 myparams.isError = False
-if (CASE == "sine_waves_noise") or (CASE == "sine_waves"):
+if (VARIANT != "J2") and ((CASE == "sine_waves_noise") or (CASE == "sine_waves")):
     myparams.isError = True
+
+myparams.total_variation_iterations = 80
+myparams.tv_lambda = 1      # the smaller tv_lambda, the bigger smoothing of time amplitudes
 
 METHOD = VARIANT
 if METHOD == "ALM":
     param_alm = mu0  # adjust for case
     myparams.lambda_s = 1
     if CASE == "multiple_ranks":
-        myparams.lambda_s = 3
+        myparams.lambda_s = 4
         param_alm = mu0*0.08
     if CASE == "sine_waves":
         myparams.lambda_s = 0.35
@@ -122,8 +126,8 @@ elif METHOD == "J2":
     nmodes = nmodes_exact
     if CASE == "sine_waves_noise":
         print()
-        print("J2 algorithms fail for cases with noise -- choose ALM")
-        input("If you wish to continue anyway, press Enter...")
+        print("J2 algorithms fail for cases with noise -- choose ALM or JFB")
+        #input("If you wish to continue anyway, press Enter...")
 
 ret = shifted_POD(qmat, transfos, myparams, METHOD, param_alm, nmodes=nmodes)
 
@@ -133,14 +137,35 @@ qf = [
     for transfo, frame in zip(transfos, ret.frames)
 ]
 
+#np.savetxt('./rel_err.dat', rel_err, fmt='%05.4e')
+rank = ret.ranks
+
+
+if PLOT_VT:
+    for k, frame in enumerate(sPOD_frames):
+        #print(sPOD_frames_meg[k].modal_system["sigma"][:rank_meg])
+        VT = sPOD_frames[k].modal_system["VT"]
+        VT = VT[:rank[k], :]
+        np.savetxt(PIC_DIR + "vt_classic_%d_%s.dat"%(k, VARIANT), VT.T, fmt='%03.2e', delimiter='\t')
+    
+        for indM in range(rank[k]):   
+            fig = plt.figure()
+            plt.plot(VT[indM,:])
+            plt.xlim(0, Nt)
+            plt.savefig(PIC_DIR + "tvl_test/vt_classic_%d_%d_%s_%d.png"%(k, indM, VARIANT, myparams.total_variation_iterations))
+            plt.close()
+            
+            # AK: only first ten modes, otherwise takes too long
+            if indM > 10: 
+                break
+
+        
 print()
-#input("Press enter")
 
 ############################################
 # %% run megaframe variant
 ############################################
-Niter = 500       # number of sPOD iterations
-myparams.maxit = Niter
+myparams.maxit = 100
 
 METHOD = VARIANT + "_megaframe"
 if METHOD == "J2_megaframe":
@@ -148,23 +173,25 @@ if METHOD == "J2_megaframe":
 if METHOD == "JFB_megaframe":
     myparams.lambda_s = 0.1
     if CASE == "multiple_ranks":
-        myparams.lambda_s = 0.1
+        myparams.lambda_s = 0.6
     if CASE == "non_cross_mult_ranks":
         myparams.lambda_s = 0.5
     if CASE == "sine_waves":
-        myparams.lambda_s = 0.32
+        myparams.lambda_s = 0.32        # with noise
+        #myparams.lambda_s = 0.43        # without noise
         myparams.lambda_E = 0.018
     if CASE == "sine_waves_noise":
         myparams.lambda_s = 0.8
         myparams.lambda_E = 0.055
 if METHOD == "ALM_megaframe":
     myparams.lambda_s = 2 # adjust for case
-    param_alm = mu0 
+    param_alm = mu0*0.1
     if CASE == "multiple_ranks":
-        myparams.lambda_s = 1
+        myparams.lambda_s = 2.5
         param_alm = mu0*0.2
     if CASE == "sine_waves":
-        myparams.lambda_s = 1
+        param_alm = mu0*0.5
+        myparams.lambda_s = 1.6
         myparams.lambda_E = 0.05
     if CASE == "sine_waves_noise":
         myparams.lambda_s = 2.6
@@ -174,27 +201,29 @@ if METHOD == "ALM_megaframe":
 ret_meg = shifted_POD(qmat, transfos, myparams, METHOD, param_alm, nmodes=nmodes)
 
 sPOD_frames_meg, qtilde_meg, rel_err_meg = ret_meg.frames, ret_meg.data_approx, ret_meg.rel_err_hist
+#np.savetxt('./rel_err_meg.dat', rel_err_meg, fmt='%05.4e')
+
 rank_meg = ret_meg.ranks
 qf_meg = [
     np.squeeze(np.reshape(transfo.apply(frame.build_field()), data_shape))
     for transfo, frame in zip(transfos, ret_meg.frames)
 ]
+
 if PLOT_VT:
     VTmeg = np.zeros((rank_meg, Nt*len(shift_list)))
     for k, frame in enumerate(sPOD_frames_meg):
-        print(sPOD_frames_meg[k].modal_system["sigma"][:rank_meg])
         VT = sPOD_frames_meg[k].modal_system["VT"]
         VT = VT[:rank_meg, :]
         VTmeg[:, k*Nt:(k+1)*Nt] = VT
         np.savetxt(PIC_DIR + "vt_%d_%s.dat"%(k, VARIANT), VT.T, fmt='%03.2e', delimiter='\t')
     
-    for indM in range(rank_meg):   
+    for indM in range(min(rank_meg, 10)):   
         fig = plt.figure()
         plt.plot(VTmeg[indM,:])
         plt.xlim(0, Nt*2)
-        plt.savefig(PIC_DIR + "vt_%d_%s.png"%(indM, VARIANT))
+        plt.savefig(PIC_DIR + "vt_%d_%s_%d.png"%(indM, VARIANT, myparams.total_variation_iterations))
         plt.close()
-    
+
 
 ############################################
 # %% visualize your results: sPOD frames
@@ -315,14 +344,14 @@ for row in range(2):
     for axes in ax[row, :]:
         axes.set_aspect(0.6)
 
-if (CASE == "three_cross_waves") or (CASE == "sine_waves_noise"):
+if (CASE == "three_cross_waves") or (myparams.isError == True):
     plt.colorbar(im2, ax=ax[0, 4], location='right', shrink=0.8)
 else:
     plt.colorbar(im2, ax=ax[0, 3], location='right', shrink=0.8)
 #plt.tight_layout()
 
 if SAVE_FIG:
-    save_fig(PIC_DIR + "01_pictures_%s_%s.png"%(CASE, VARIANT), fig)
+    plt.savefig(PIC_DIR + "01_pictures_%s_%s_%d.png"%(CASE, VARIANT, myparams.total_variation_iterations))
 #plt.show()
 
 #######################################################
@@ -380,6 +409,6 @@ plt.tight_layout()
 
 
 if SAVE_FIG:
-    plt.savefig(PIC_DIR + "01_convergence_%s_%s.png"%(CASE, VARIANT))
+    plt.savefig(PIC_DIR + "01_convergence_%s_%s_%d.png"%(CASE, VARIANT, myparams.total_variation_iterations))
 plt.show()
 
