@@ -128,7 +128,8 @@ class Frame:
         # Reshape to snapshot matrix
         X = reshape(field, [-1, self.Ntime])
         # Perform an SVT of the snapshot matrix
-        [U, S, VT] = SVT(X, gamma)
+        #[U, S, VT] = SVT(X, gamma)
+        [U, S, VT] = trunc_SVT(X, gamma)
         # Store the SVT of the snapshot matrix
         self.modal_system = {"U": U, "sigma": S, "VT": VT}
 
@@ -167,9 +168,17 @@ class Frame:
         :param clambda: Value of the regularization parameter.
         :type clambda: float, optional
         """
-        from total_variation import solve_TVL1
+        from total_variation import solve_TVL1, solve_ROF
 
         VT = self.modal_system["VT"]
+        """
+        nM = VT.shape[0]
+        VTsmooth = np.zeros_like(VT).T
+        for indM in range(nM):
+            VTsmooth[:, indM] = solve_TVL1(VT[indM, :].T, clambda, iter_n=TV_iterations).T
+        VTsmooth = VTsmooth.T
+        self.modal_system["VT"] = VTsmooth
+        """
         self.modal_system["VT"] = solve_TVL1(VT.T, clambda, iter_n=TV_iterations).T
 
     def build_field(self, rank=None):
@@ -452,6 +461,44 @@ def SVT(X, gamma, nmodes_max=None, use_rSVD=False):
     s = shrink(s, gamma)
     return (u, s, vt)
 
+def trunc_SVT(X, gamma, nmodes_max=None, use_rSVD=False):
+    r"""
+    This function implements the proximal operator of the nuclear norm of a
+    matrix :math:`X`.
+    This operator is also known as the Singular Value Thresholding (SVT) and it
+    is uniquely defined as matrix :math:`Y` such that
+
+    .. math::
+
+        \DeclareMathOperator*{\argmin}{arg\,min}
+        Y = \argmin_{Z\in\mathbb{R}^{N,M}} \|z\|_{*} + \frac{1}{2\gamma}\|Z-X\|_{2}^{2} \, .
+
+    SVT can be performed on a truncated SVD of :math:`X` by setting the correct
+    values of the parameters.
+
+    :param X: matrix at which the proximal operator is applied.
+    :type X: :class:`numpy.ndarray` of size (N,M)
+
+    :param gamma: parameter of the operator (a strictly positive real number).
+    :type gamma: float
+
+    :param nmodes_max: Number of modes in the truncated SVD.
+                       When it is set to None, the full SVD is performed.
+    :type nmodes_max: int, optional
+
+    :param use_rSVD: Boolean set to True in order to use randomized version of
+                     the SVD.
+    :type use_rSVD: bool, optional
+
+    :return: The proximal operator of the nuclear norm evaluated at the given matrix.
+    """
+    u, s, vt = trunc_svd(X, nmodes_max, use_rSVD)
+    s = shrink(s, gamma)
+    rankk = np.sum(s > 0)
+    u = u[:, :rankk]
+    s = s[:rankk]
+    vt = vt[:rankk, :]
+    return (u, s, vt)
 
 def trunc_svd(X, nmodes_max=None, use_rSVD=False):
     """
@@ -475,6 +522,10 @@ def trunc_svd(X, nmodes_max=None, use_rSVD=False):
             vt = vt[:nmodes_max, :]
     else:
         u, s, vt = svd(X, full_matrices=False)
+    if nmodes_max == 0:
+        u = np.zeros_like(u)
+        s = np.zeros_like(s)
+        vt = np.zeros_like(vt)
     return (u, s, vt)
 
 

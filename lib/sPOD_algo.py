@@ -18,7 +18,8 @@ from numpy import reshape
 from numpy.linalg import norm
 from dataclasses import dataclass
 from warnings import warn
-from sPOD_tools import Frame, SVT, trunc_svd, shrink
+from sPOD_tools import Frame, SVT, trunc_svd, trunc_SVT, shrink
+from total_variation import solve_TVL1, solve_ROF
 
 # ============================================================================ #
 
@@ -182,9 +183,9 @@ def shifted_POD_J2(
     ###################################
     q = snapshot_matrix
     qtilde = np.zeros_like(q)
-    Nframes = len(transforms)
-    if np.size(nmodes) != Nframes:
-        nmodes = list([nmodes]) * Nframes
+    nTransports = len(transforms)
+    if np.size(nmodes) != nTransports:
+        nmodes = list([nmodes]) * nTransports
     qtilde_frames = [
         Frame(transfo, qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
     ]
@@ -193,7 +194,7 @@ def shifted_POD_J2(
     ###########################
     # Error of the truncated SVD
     r_ = np.sum(nmodes)
-    (u, s, vt) = trunc_svd(q, nmodes_max=None, use_rSVD=myparams.use_rSVD)
+    (u, s, vt) = trunc_svd(q, nmodes_max=r_, use_rSVD=myparams.use_rSVD)
     err_svd = np.linalg.norm(q - np.dot(u * s, vt), ord="fro") / norm_q
     print(
         "Relative error using a truncated SVD with {:d} modes:{:4.4e}".format(
@@ -204,8 +205,8 @@ def shifted_POD_J2(
 
     current_it = 0
     rel_err = 1
-    rel_err_list = []
-    ranks_hist = [[] for r in range(Nframes)]
+    rel_err_list = [1.0]
+    ranks_hist = [[] for r in range(nTransports)]
     sum_elapsed = 0
     while rel_err > myparams.eps and current_it < myparams.maxit:
         current_it += 1
@@ -213,11 +214,8 @@ def shifted_POD_J2(
         # 2.Step: Calculate Residual
         #############################
         res = q - qtilde
-        norm_res = norm(reshape(res, -1))
-        rel_err = norm_res / norm_q
-        rel_err_list.append(rel_err)
         qtilde = np.zeros_like(q)
-        ranks = [0] * Nframes
+        ranks = [0] * nTransports
 
         ###########################
         # 3. Step: update frames
@@ -226,13 +224,15 @@ def shifted_POD_J2(
         for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
             res_shifted = trafo.reverse(res)
             q_frame_field = q_frame.build_field()
-            stepsize = 1 / Nframes
+            stepsize = 1 / nTransports
             q_frame.set_orthonormal_system(
                 q_frame_field + stepsize * res_shifted, myparams.use_rSVD
             )
+
             if myparams.total_variation_iterations > 0:
                 q_frame.smoothen_time_amplitudes(
-                    TV_iterations=myparams.total_variation_iterations
+                    TV_iterations=myparams.total_variation_iterations, 
+                    clambda=myparams.tv_lambda
                 )
             qtilde += trafo.apply(q_frame.build_field())
             S = q_frame.modal_system["sigma"]
@@ -241,8 +241,14 @@ def shifted_POD_J2(
             rank = np.sum(S > 0)
             ranks[k] = rank
             ranks_hist[k].append(rank)
+        
+        # rel errors etc.
+        norm_res = norm(reshape(res, -1))
+        rel_err = norm_res / norm_q
+        rel_err_list.append(rel_err)
         elapsed = time.perf_counter() - t
         sum_elapsed += elapsed
+        
         print(
             "it=%d rel_err= %4.4e t_cpu = %2.2f, ranks_frame ="
             % (current_it, rel_err, elapsed),
@@ -309,12 +315,12 @@ def shifted_POD_FB(
     qtilde = np.zeros_like(q)
     if myparams.isError:
         E = np.zeros_like(snapshot_matrix)
-    Nframes = len(transforms)
+    nTransports = len(transforms)
     # make a list of the number of maximal ranks in each frame
     if not np.all(nmodes_max):  # check if array is None, if so set nmodes_max onto N
         nmodes_max = np.min(np.shape(snapshot_matrix)) # use the smallest dimension beacuse after this singular values will be 0
-    if np.size(nmodes_max) != Nframes:
-        nmodes = list([nmodes_max]) * Nframes
+    if np.size(nmodes_max) != nTransports:
+        nmodes = list([nmodes_max]) * nTransports
     else:
         nmodes = [nmodes_max]
     qtilde_frames = [
@@ -339,8 +345,8 @@ def shifted_POD_FB(
     objective_list = [objective_0]
     rel_decrease = 1
     rel_decrease_list = [1]
-    rel_err_list = []
-    ranks_hist = [[] for r in range(Nframes)]
+    rel_err_list = [1.0]
+    ranks_hist = [[] for r in range(nTransports)]
     sum_elapsed = 0
        
     while rel_decrease > myparams.eps and current_it < myparams.maxit:
@@ -352,12 +358,10 @@ def shifted_POD_FB(
             res = q - qtilde - E
         else:
             res = q - qtilde
-        norm_res = norm(reshape(res, -1))
-        rel_err = norm_res / norm_q
-        rel_err_list.append(rel_err)
+
         if method == "JFB":
             qtilde = np.zeros_like(q)
-        ranks = [0] * Nframes
+        ranks = [0] * nTransports
 
         ###################################
         #      3. Update the frames       #
@@ -368,14 +372,17 @@ def shifted_POD_FB(
             q_frame_field = q_frame.build_field()
             if method == "BFB":
                 qtilde -= trafo.apply(q_frame.build_field())
-            stepsize = 1 / Nframes
+            stepsize = 1 / nTransports
             q_frame.set_orthonormal_system_svt(
                 q_frame_field + stepsize * res_shifted, stepsize * myparams.lambda_s
             )
+
             if myparams.total_variation_iterations > 0:
                 q_frame.smoothen_time_amplitudes(
-                    TV_iterations=myparams.total_variation_iterations
+                    TV_iterations=myparams.total_variation_iterations, 
+                    clambda=myparams.tv_lambda
                 )
+
             S = q_frame.modal_system["sigma"]
             rank = np.sum(S > 0)
             ranks[k] = rank
@@ -403,6 +410,11 @@ def shifted_POD_FB(
             objective_list[-1]
         )
         rel_decrease_list.append(rel_decrease)
+        
+        norm_res = norm(reshape(res, -1))
+        rel_err = norm_res / norm_q
+        rel_err_list.append(rel_err)
+        
         elapsed = time.perf_counter() - t
         sum_elapsed += elapsed
         if myparams.isVerbose:
@@ -451,9 +463,9 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
     :rtype: :class:`ReturnValue`
     """
     # Note (AK): the implementation is slightly modified compared to the sPOD-proxbranch, but produces exactly the same results
-    #         sPOD-proxbranch needs (nFrames^2 + nFrames) shifts per iter, this one only (3*nFrames)
-    #         this one is faster for nFrames>2
-    #         sPOD-proxbranch is still faster for nFrames=2
+    #         sPOD-proxbranch needs (nTransports^2 + nTransports) shifts per iter, this one only (3*nTransports)
+    #         this one is faster for nTransports>2
+    #         sPOD-proxbranch is still faster for nTransports=2
     assert (
         np.ndim(snapshot_matrix) == 2
     ), "Please give enter a snapshotmatrix with every snapshot in one column"
@@ -467,13 +479,13 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
     ###################################
     qtilde = np.zeros_like(snapshot_matrix)
     E = np.zeros_like(snapshot_matrix)
-    Nframes = len(transforms)
+    nTransports = len(transforms)
 
     # make a list of the number of maximal ranks in each frame
     if not np.all(nmodes_max):  # check if array is None, if so set nmodes_max onto N
         nmodes_max = np.min(np.shape(snapshot_matrix)) # use the smallest dimension beacuse after this singular values will be 0
-    if np.size(nmodes_max) != Nframes:
-        nmodes = list([nmodes_max]) * Nframes
+    if np.size(nmodes_max) != nTransports:
+        nmodes = list([nmodes_max]) * nTransports
     else:
         nmodes = [nmodes_max]
      
@@ -493,7 +505,7 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
     rel_err = 1
     res_old = 0
     rel_err_list = []
-    ranks_hist = [[] for r in range(Nframes)]
+    ranks_hist = [[] for r in range(nTransports)]
     sum_elapsed = 0
     qtilde = np.zeros_like(q)
     while rel_err > myparams.eps and it < myparams.maxit:
@@ -502,23 +514,32 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
         #       2. Set qtilde to 0        #
         ###################################
         #qtilde = np.zeros_like(q)
-        ranks = [0] * Nframes
+        ranks = [0] * nTransports
         ###################################
         #      3. Update the frames       #
         ###################################
-        t = time.time()
+        t = time.perf_counter()
 
         for k, (trafo, q_frame) in enumerate(zip(transforms, qtilde_frames)):
             qk = q_frame.build_field() + trafo.reverse(q - qtilde - E + mu_inv * Y) 
             
-            qtilde -= trafo.apply(q_frame.build_field())            
-            [U, S, VT] = SVT(qk, mu_inv * myparams.lambda_s, q_frame.Nmodes, myparams.use_rSVD)
-            rank = np.sum(S > 0)
-            q_frame.modal_system = {
-                "U": U[:, :rank],
-                "sigma": S[:rank],
-                "VT": VT[:rank, :],
-            }
+            qtilde -= trafo.apply(q_frame.build_field()) 
+            
+            q_frame.set_orthonormal_system_svt(qk, mu_inv * myparams.lambda_s) 
+            rank = len(q_frame.modal_system["sigma"])
+            
+            if (myparams.total_variation_iterations > 0) and (rank > 0):
+                q_frame.smoothen_time_amplitudes(
+                    TV_iterations=myparams.total_variation_iterations, clambda=myparams.tv_lambda
+                ) 
+                                  
+            #[U, S, VT] = SVT(qk, mu_inv * myparams.lambda_s, q_frame.Nmodes, myparams.use_rSVD)
+            #rank = np.sum(S > 0)
+            #q_frame.modal_system = {
+            #    "U": U[:, :rank],
+            #    "sigma": S[:rank],
+            #    "VT": VT[:rank, :],
+            #}
             ranks_hist[k].append(rank)
             ranks[k] = rank
 
@@ -549,7 +570,7 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
         rel_err_without_noise = norm(reshape(res + E, -1)) / norm_q
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
-        elapsed = time.time() - t
+        elapsed = time.perf_counter() - t
         sum_elapsed += elapsed
 
         if myparams.isVerbose:
@@ -627,31 +648,18 @@ def shifted_POD_J2_megaframe(
     rel_err = 1
     
     norm_q = np.linalg.norm(np.reshape(snapshot_matrix, -1))
-    rel_err_list = []
+    rel_err_list = [1.0]
     ranks_hist = []
     
+    # calculate the residual
+    res = snapshot_matrix - qtilde
+    
     step = 1/nTransports
+    sum_elapsed = 0
     while rel_err > myparams.eps and it < myparams.maxit:
         it += 1
 
-        # calculate the residual
-        res = snapshot_matrix - qtilde
-        norm_res = np.linalg.norm(np.reshape(res, -1))
-        rel_err = norm_res/norm_q
-        
-        rel_err_list.append(rel_err)
-        if myparams.isVerbose:
-            print(
-                "Iter %d / %d | Rel_err= %4.4e | rank_meg = %d | rank_stat = %d"%(
-                    it,
-                    myparams.maxit,
-                    rel_err,
-                    nmodes,
-                    nmodesstat
-                ),
-            )
-
-
+        t = time.perf_counter()
         # update moving megaframe
         for k, trafo in enumerate(transforms):
             R_frame = trafo.reverse(res)
@@ -659,6 +667,16 @@ def shifted_POD_J2_megaframe(
                         
         # truncate
         [umeg, smeg, vtmeg] = trunc_svd(qmeg, nmodes_max = nmodes, use_rSVD=myparams.use_rSVD)
+        
+        # (total variation smoothing)
+        # AK: I'll probably smooth them block by block because there might be (physically legit) discontinuities between blocks
+        if myparams.total_variation_iterations > 0:
+            for k in range(1):
+                VT = vtmeg[:, k*nCols:(k+1)*nCols]
+                #VT = vtmeg
+                VT = solve_TVL1(VT.T, clambda=myparams.tv_lambda, iter_n=myparams.total_variation_iterations).T
+                vtmeg[:, k*nCols:(k+1)*nCols] = VT
+                #vtmeg = VT
         
         rank = np.sum(smeg > 0)
         ranks = rank
@@ -678,10 +696,40 @@ def shifted_POD_J2_megaframe(
             qkhat = trafo.apply(qmeg[:, k*nCols:(k+1)*nCols])
             qhat.append(qkhat)
             qtilde += qkhat        #*step
+        
+        # calculate the residual
+        res = snapshot_matrix - qtilde
+        
+        norm_res = np.linalg.norm(np.reshape(res, -1))
+        rel_err = norm_res/norm_q
+        rel_err_list.append(rel_err)
+        
+        elapsed = time.perf_counter() - t
+        sum_elapsed += elapsed
+        
+        if myparams.isVerbose:
+            print(
+                "Iter %d / %d | Rel_err= %4.4e | rank_meg = %d | rank_stat = %d"%(
+                    it,
+                    myparams.maxit,
+                    rel_err,
+                    nmodes,
+                    nmodesstat
+                ),
+            )
     
     # re-formate as a frame
     qtilde_frames = [Frame(transfo, field=qhat[k], Nmodes=nmodes) for k, transfo in enumerate(transforms)]
+    # AK:   amplitudes get saved without smoothing for some reason?
+    #       replace them with updated amplitudes with smoothing
+    for k, frame in enumerate(qtilde_frames):
+        frame.modal_system["U"] = umeg
+        frame.modal_system["sigma"] = smeg
+        frame.modal_system["VT"] = vtmeg[:, k*nCols:(k+1)*nCols]
     #qtilde_frames = [Frame(transfo, field=transfo.apply(qmeg[:, k*nCols:(k+1)*nCols]), Nmodes=nmodes) for k, transfo in enumerate(transforms)]        
+         
+    print("CPU time in total: ", sum_elapsed)
+     
             
     return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
     #return qtilde, [umeg, smeg, vtmeg], [qstat, sstat, vtstat]
@@ -733,13 +781,13 @@ def shifted_POD_FB_megaframe(
     ###################################
     #        1. Initialization        #
     ###################################
-    Nframes = len(transforms)
+    nTransports = len(transforms)
 
     q = snapshot_matrix
     qtilde = np.zeros_like(q)
     
-    M, N = np.shape(q)
-    qmeg = np.zeros((M, N*Nframes))
+    nRows, nCols = np.shape(q)
+    qmeg = np.zeros((nRows, nCols*nTransports))
     if myparams.isError:
         E = np.zeros_like(snapshot_matrix)
     # make a list of the number of maximal ranks in each frame
@@ -765,7 +813,7 @@ def shifted_POD_FB_megaframe(
     objective_0 = 0.5 * norm(q, ord="fro") ** 2
     objective_list = [objective_0]
 
-    rel_err_list = []
+    rel_err_list = [1.0]
     rel_decrease = 1
     rel_decrease_list = [1]
     ranks_hist = []
@@ -779,27 +827,30 @@ def shifted_POD_FB_megaframe(
         t = time.perf_counter()
         for k, trafo in enumerate(transforms):
             res_shifted = trafo.reverse(res)
-            qkhat = qmeg[:, k*N:(k+1)*N]
-            qmeg[:, k*N:(k+1)*N] += res_shifted / Nframes
+            qkhat = qmeg[:, k*nCols:(k+1)*nCols]
+            qmeg[:, k*nCols:(k+1)*nCols] += res_shifted / nTransports
             
         ###################################
         #      3. Proximal step           #
         ###################################
-        [U, S, VT] = SVT(qmeg, myparams.lambda_s, nmodes_max, myparams.use_rSVD)
-        rank_meg = np.sum(S > 0)
-        modal_syst_meg = {
-            "U": U[:, :rank_meg],
-            "sigma": S[:rank_meg],
-            "VT": VT[:rank_meg, :],
-        }
-        qmeg = np.dot(U*S, VT)      # truncate
+        [umeg, smeg, vtmeg] = trunc_SVT(qmeg, myparams.lambda_s, nmodes_max, myparams.use_rSVD)
+        
+        # (total variation smoothing)
+        if myparams.total_variation_iterations > 0:
+            for k in range(nTransports):
+                VT = vtmeg[:, k*nCols:(k+1)*nCols]
+                VT = solve_TVL1(VT.T, clambda=myparams.tv_lambda, iter_n=myparams.total_variation_iterations).T
+                vtmeg[:, k*nCols:(k+1)*nCols] = VT
+                
+        rank_meg = np.sum(smeg > 0)
+        qmeg = np.dot(umeg*smeg, vtmeg)      # truncate
         ranks_hist.append(rank_meg)
 
         ###################################
         #      4. Error matrix            #
         ###################################
         if myparams.isError:
-            E = shrink(E + res / Nframes, myparams.lambda_E / Nframes)
+            E = shrink(E + res / nTransports, myparams.lambda_E / nTransports)
         
         ###################################
         #      5. Update qtilde           #
@@ -807,7 +858,7 @@ def shifted_POD_FB_megaframe(
         qtilde = np.zeros_like(q)
         qhat = []
         for k, trafo in enumerate(transforms):
-            qkhat = trafo.apply(qmeg[:, k*N:(k+1)*N])
+            qkhat = trafo.apply(qmeg[:, k*nCols:(k+1)*nCols])
             qhat.append(qkhat)
             qtilde += qkhat
         
@@ -852,8 +903,12 @@ def shifted_POD_FB_megaframe(
 
         
     # reformulate as frames for output consistent with classical sPOD
-    qtilde_frames = [Frame(transfo, field=qhat[k], Nmodes=nmodes) for k, transfo in enumerate(transforms)]
     ranks = ranks_hist[-1]
+    qtilde_frames = [Frame(transfo, field=qhat[k], Nmodes=ranks) for k, transfo in enumerate(transforms)]
+    for k, frame in enumerate(qtilde_frames):
+        frame.modal_system["U"] = umeg
+        frame.modal_system["sigma"] = smeg
+        frame.modal_system["VT"] = vtmeg[:, k*nCols:(k+1)*nCols]
 
     if myparams.isError:
         print("CPU time in total: ", sum_elapsed)
@@ -911,7 +966,7 @@ def shifted_POD_ALM_megaframe(
     #        1. Initialization        #
     ###################################
     qtilde = np.zeros_like(snapshot_matrix)
-    Nframes = len(transforms)
+    nTransports = len(transforms)
 
     # make a list of the number of maximal ranks in each frame
     if not np.all(nmodes_max):  # check if array is None, if so set nmodes_max onto N
@@ -926,13 +981,13 @@ def shifted_POD_ALM_megaframe(
     E = np.zeros_like(snapshot_matrix)
     norm_q = norm(reshape(q, -1))
     it = 0
-    M, N = np.shape(q)
+    nRows, nCols = np.shape(q)
     if mu is None:
-        mu = N * M / (4 * np.sum(np.abs(q)))
+        mu = nCols * nRows / (4 * np.sum(np.abs(q)))
     if myparams.lambda_E is None:
-        myparams.lambda_E = 1 / np.sqrt(np.maximum(M, N))
+        myparams.lambda_E = 1 / np.sqrt(np.maximum(nRows, nCols))
     if myparams.lambda_s is None:
-        myparams.lambda_s = 1 / np.sqrt(np.maximum(M, N))   
+        myparams.lambda_s = 1 / np.sqrt(np.maximum(nRows, nCols))   
     
     print('lambda_s = %f'%myparams.lambda_s)
     print('lambda_e = %f'%myparams.lambda_E)
@@ -941,14 +996,14 @@ def shifted_POD_ALM_megaframe(
     mu_inv = 1 / mu
     rel_err = 1
     res_old = 0
-    rel_err_list = []
+    rel_err_list = [1.0]
     ranks_hist = []
     sum_elapsed = 0
     
     res = q
     
     qtilde = np.zeros_like(q)
-    qmeg = np.zeros((M, N*Nframes))     # megaframe
+    qmeg = np.zeros((nRows, nCols*nTransports))     # megaframe
     qstat = 0
 
     while rel_err > myparams.eps and it < myparams.maxit:
@@ -958,31 +1013,34 @@ def shifted_POD_ALM_megaframe(
         ###################################
         #      3. Update the frames       #
         ###################################
-        t = time.time()
+        t = time.perf_counter()
 
         #qstat = np.zeros_like(q)            # stationary frame
 
 
         for k, trafo_k in enumerate(transforms):
             rk = trafo_k.reverse(res)
-            qmeg[:, k*N : (k+1)*N] += rk / Nframes
+            qmeg[:, k*nCols : (k+1)*nCols] += rk / nTransports
             
         # proximal step (6):
-        [U, S, VT] = SVT(qmeg, mu_inv * myparams.lambda_s, nmodes, myparams.use_rSVD)
-        rank_meg = np.sum(S > 0)
-        modal_syst_meg = {
-            "U": U[:, :rank_meg],
-            "sigma": S[:rank_meg],
-            "VT": VT[:rank_meg, :],
-        }
-        qmeg = np.dot(U*S, VT)      # truncate
+        [umeg, smeg, vtmeg] = trunc_SVT(qmeg, mu_inv * myparams.lambda_s, nmodes, myparams.use_rSVD)
+        rank_meg = np.sum(smeg > 0)
+        
+        # (total variation smoothing)
+        if (myparams.total_variation_iterations > 0) and (rank_meg > 0):
+            for k in range(nTransports):
+                VT = vtmeg[:, k*nCols:(k+1)*nCols]
+                VT = solve_TVL1(VT.T, clambda=myparams.tv_lambda, iter_n=myparams.total_variation_iterations).T
+                vtmeg[:, k*nCols:(k+1)*nCols] = VT
+        
+        qmeg = np.dot(umeg*smeg, vtmeg)      # truncate
         ranks_hist.append(rank_meg)
 
         # update reconstruction
         qtilde = np.zeros_like(q)
         qhat = []
         for k, trafo in enumerate(transforms):
-            qkhat = trafo.apply(qmeg[:, k*N : (k+1)*N])
+            qkhat = trafo.apply(qmeg[:, k*nCols : (k+1)*nCols])
             qhat.append(qkhat) 
             qtilde += qkhat 
             
@@ -1011,7 +1069,7 @@ def shifted_POD_ALM_megaframe(
         norm_res = norm(reshape(res, -1))
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
-        elapsed = time.time() - t
+        elapsed = time.perf_counter() - t
         sum_elapsed += elapsed
 
         if myparams.isVerbose:
@@ -1034,7 +1092,11 @@ def shifted_POD_ALM_megaframe(
     ranks = ranks_hist[-1]
     # re-formate as a frame
     qtilde_frames = [Frame(transfo, field=qhat[k], Nmodes=nmodes) for k, transfo in enumerate(transforms)]
-        
+    for k, frame in enumerate(qtilde_frames):
+        frame.modal_system["U"] = umeg
+        frame.modal_system["sigma"] = smeg
+        frame.modal_system["VT"] = vtmeg[:, k*nCols:(k+1)*nCols]
+    
     if myparams.isError:
         print("CPU time in total: ", sum_elapsed)
         return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
@@ -1054,8 +1116,8 @@ def force_constraint(qframes, transforms, q, Niter=1, alphas=None):
     norm_q = norm(reshape(q, -1))
     qtilde = np.zeros_like(q)
     if alphas == None:
-        Nframes = len(transforms)
-        alphas = [1 / Nframes] * Nframes
+        nTransports = len(transforms)
+        alphas = [1 / nTransports] * nTransports
 
     for iter in range(Niter):
         qtilde = 0
@@ -1125,13 +1187,13 @@ def save_frames(fname, frames, error_matrix=None):
         np.save(fname_error_matrix, error_matrix)
 
 
-def load_frames(fname, Nframes, load_ErrMat=False):
+def load_frames(fname, nTransports, load_ErrMat=False):
     fname_base, old_ext = os.path.splitext(fname)
     ext = ".pkl"
 
     # Load frames
     frame_list = []
-    for k in range(Nframes):
+    for k in range(nTransports):
         fname_frame = fname_base + "_%.2d" % k + ext
         print("frame %2d loaded: " % k, fname_frame)
         newframe = Frame(fname=fname_frame)
@@ -1171,6 +1233,7 @@ class sPOD_Param:
         total_variation_itertations (int): Number of iterations of the iterative
                                            algorithm that computes the proximal
                                            operator of the total variation (TV).
+        tv_lambda (float):  Parameter clambda for the total variation
     """
 
     gtol: float = 1e-6
@@ -1182,6 +1245,7 @@ class sPOD_Param:
     lambda_s: float = 1e-2
     lambda_E: float = 1e-2
     total_variation_iterations: int = -1
+    tv_lambda: float = 1.0
 
 
 # ============================================================================ #
