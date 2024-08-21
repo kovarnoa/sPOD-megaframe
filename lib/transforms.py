@@ -157,16 +157,20 @@ class Transform:
 
     :param interp_order: 
     :type interp_order: int
+    
+    :param is_mirrored:
+    :type is_mirrored: List[bool], len=len(transform)
 
     :param dx: 
     :type dx: List[:class:`numpy.float64`]
     """
     def __init__(self, data_shape, domain_size, transfo_type="shift",
                  shifts=None, dx=None, rotations=None, rotation_center=None,
+                 is_mirrored=True, mirror_direction=None,
                  use_scipy_transform=False, interp_order=3):
         self.Ngrid = data_shape[:2]
         self.Nvar = data_shape[2]
-        self.Ntime = data_shape[3]
+        self.Ntime = data_shape[-1]
         self.data_shape = data_shape
         self.domain_size = domain_size
         self.transfo_type = transfo_type
@@ -174,20 +178,37 @@ class Transform:
         self.interp_order = interp_order
         self.dx = dx  # list of lattice spacings
         if self.dim == 1:
-            self.shifts_pos, self.shifts_neg = self.init_shifts_1D(dx[0],
-                                                                   domain_size[0],
-                                                                   self.Ngrid[0],
-                                                                   shifts[:],
-                                                                   Nvar=self.Nvar)
-            self.shift = self.shift1
+            if transfo_type == "shift":
+                if use_scipy_transform:
+                    self.shift = self.shift_scipy_1D
+                    self.shifts_pos = np.expand_dims(shifts, axis=0)
+                    self.shifts_neg = np.expand_dims(-shifts, axis=0)  # dim x Ntime shiftarray (one element for one time instance)
+                else:
+                    self.shifts_pos, self.shifts_neg = self.init_shifts_1D(dx[0],
+                                                                           domain_size[0],
+                                                                           self.Ngrid[0],
+                                                                           shifts[:],
+                                                                           Nvar=self.Nvar)
+                    self.shift = self.shift1
+            if transfo_type == "shiftMirror":
+                if use_scipy_transform:
+                    self.shift = self.shift_scipy_1D
+                    self.shifts_pos = np.expand_dims(shifts, axis=0)
+                    self.shifts_neg = np.expand_dims(-shifts, axis=0)  
+                else:
+                    self.shifts_pos, self.shifts_neg = self.init_shifts_1D(dx[0],
+                                                                           domain_size[0],
+                                                                           self.Ngrid[0],
+                                                                           shifts[:],
+                                                                           Nvar=self.Nvar)
+                    self.shift = self.shift1
+                self.mirroring = self.compute_mirror_matrix_1D()
+                self.is_mirrored = is_mirrored
         else:
             if transfo_type == "shift":
                 if use_scipy_transform:
                     self.shift = self.shift_scipy
-                    self.shifts_pos =  shifts    # dim x Ntime shiftarray (one element for one time instance)
-                    one = np.ones_like(shifts)
-                    one[0,:] = dx[0]
-                    one[1,:] = 0  #dx[1]
+                    self.shifts_pos =  shifts  # dim x Ntime shiftarray (one element for one time instance)
                     self.shifts_neg = -shifts  # dim x Ntime shiftarray (one element for one time instance)
                 else: # own implementation for shifts: is much faster then ndimage
                     self.shifts_pos, self.shifts_neg = self.init_shifts_2D(dx, domain_size, self.Ngrid, shifts, Nvar= self.Nvar)
@@ -208,6 +229,18 @@ class Transform:
                     self.shift = self.shift1
                 self.rotations = rotations
                 self.rotation_center = rotation_center
+            if transfo_type == "shiftMirror":
+                assert(size(dx)==2), "is only implemented for spatial fields in 2 dimensions"
+                if use_scipy_transform:
+                    self.shift = self.shift_scipy
+                    self.shifts_pos =  shifts    # dim x Ntime shiftarray (one element for one time instance)
+                    self.shifts_neg = -shifts  # dim x Ntime shiftarray (one element for one time instance)
+                else: # own implementation for shifts: is much faster then ndimage
+                    self.shifts_pos, self.shifts_neg = self.init_shifts_2D(dx, domain_size, self.Ngrid, shifts, Nvar= self.Nvar)
+                    self.shift = self.shift1
+                self.mirror_direction = mirror_direction
+                self.mirroring = self.compute_mirror_matrix_2D()
+                self.is_mirrored = is_mirrored
 
 
     def apply(self, field):
@@ -241,6 +274,9 @@ class Transform:
             # ~ auxField = self.shift(field,self.shiftMatrices_pos)         #shift to origin
             field = self.rotate(field,self.rotations)                 #rotate and return
             ftrans = self.shift(field,self.shifts_pos)                   #shift to origin
+        elif self.transfo_type == "shiftMirror":
+            field = self.mirror(field, self.mirroring, self.is_mirrored)                   #shift to origin
+            ftrans = self.shift(field,self.shifts_pos)
         elif self.transfo_type == "identity":
             ftrans = field
         else:
@@ -261,6 +297,9 @@ class Transform:
             field = self.shift(field,self.shifts_neg)                   #shift back and return
             ftrans = self.rotate(field,-self.rotations)               #rotate back
             # ~ return self.shift(auxField,self.shiftMatrices_neg)          #shift back and return
+        elif self.transfo_type == "shiftMirror":
+            field = self.shift(field,self.shifts_neg)                   #shift to origin
+            ftrans = self.mirror(field,self.mirroring, self.is_mirrored)
         elif self.transfo_type == "identity":
             ftrans = field
         else:
@@ -289,31 +328,26 @@ class Transform:
         return field_shift
         
     def shift_scipy(self,field,shifts):
-        """
-        This function returns the shifted field.
-        $q(x-s,t)=T^s[q(x,t)]$ 
-        here the shift is simply s=c*t
-        In the default case where c= ~velocity of the frame~,
-        the field is shifted back to the original frame. 
-        (You may call it the laboratory frame)
-        Before we shift the frame has to be put togehter in the co-moving
-        frame. This can be done by build_field().
-        """
         input_shape = np.shape(field)
         Ntime = np.size(field,-1)
         field_shift = np.zeros([*self.Ngrid,Ntime])
         for it in range(Ntime):
-
-            #DeltaS = -np.round(np.divide(shifts[:, it], self.dx))
             DeltaS = -np.divide(shifts[:, it], self.dx)
             q = np.reshape(field[...,it], self.Ngrid)
-            #field_shift[...,it] = np.roll(q, int(DeltaS[1]), axis=1)
-            #field_shift[..., it] = np.roll(q, DeltaS[0], axis=1)
-            #q = np.reshape(field[...,it], self.Ngrid)
-            field_shift[...,it] = ndimage.shift(q,DeltaS,mode='grid-wrap')
+            field_shift[...,it] = ndimage.shift(q,DeltaS,mode='grid-wrap', order=self.interp_order)
         return np.reshape(field_shift,input_shape)
-    # Note (MI): the shifts need to be scaled w.r.t the image and are reversed 
 
+    def shift_scipy_1D(self,field,shifts):
+        input_shape = np.shape(field)
+        Ntime = np.size(field,-1)
+        field_shift = np.zeros([*self.Ngrid,Ntime])
+        field_shift = np.squeeze(field_shift)
+        for it in range(Ntime):
+            DeltaS = -np.divide(shifts[:, it], self.dx)
+            q = np.reshape(field[...,it], self.Ngrid)
+            q = np.squeeze(q)
+            field_shift[...,it] = ndimage.shift(q,DeltaS,mode='grid-wrap', order=self.interp_order)
+        return np.reshape(field_shift,input_shape)
 
     def rotate(self, field, rotations):
         input_shape = np.shape(field)
@@ -325,7 +359,20 @@ class Transform:
             field_rot[...,it] = ndimage.rotate(q, angle*180.0/np.pi, reshape=False)
             
         return np.reshape(field_rot,input_shape)
-
+    
+    def mirror(self, field, mirroring, is_mirrored):
+        input_shape = np.shape(field)
+        Ntime = np.size(field,-1)
+        field_mirrored = np.zeros_like(field)
+        if is_mirrored == True:
+            #print("Bude se preklapet")
+            for it in range(Ntime):
+                vec = np.reshape(field[...,it],-1)
+                vec_mirrored = mirroring@vec
+                field_mirrored[...,it] = np.reshape(vec_mirrored,self.data_shape[:-1])
+            return np.reshape(field_mirrored,input_shape)
+        else:
+            return np.reshape(field,input_shape)
 
     def init_shifts_2D(self, dX, domain_size, Ngrid, shifts, Nvar = 1):
         ### implement pos shift matrix ###
@@ -505,7 +552,67 @@ class Transform:
         
         return Mat
 
+    def compute_mirror_matrix_1D(self):
+        """
+        :return:
+        Matrix in with size len(field) x len(field) in the form of
+        0 0 ... 0 1
+        0 0 ... 1 0 
+        ...     ...
+        0 1 ... 0 0
+        1 0 ... 0 0       
+        """
+        M = self.Ngrid[0]
+        rows = np.arange(0, M, 1)
+        cols = M - rows - 1
+        ones = [1.0 for val in range(M)]
+        
+        mirrorMat = sparse.coo_matrix((ones, (rows, cols)), shape=(M, M))
 
+        return mirrorMat
+    
+    def compute_mirror_matrix_2D(self):
+        """
+        :return:
+        Matrix in with size size(field) x size(field) 
+        Horizontal flip:
+        0 0 ... 1 0
+        0 0 ... 0 1 
+        ...     ...
+        1 0 ... 0 0
+        0 1 ... 0 0 
+        Vertical flip:
+        0 1 ... 0 0
+        1 0 ... 0 0 
+        ...     ...
+        0 0 ... 0 1
+        0 0 ... 1 0 
+        Blocks have the size Ngrid[0]
+        """
+        direction = self.mirror_direction
+        M = self.Ngrid[0]
+        N = self.Ngrid[1]
+        rows = np.arange(0, M*N, 1)
+
+        cols = []
+        if direction == "vertical":
+            for indN in range(N):
+                cols.append(np.arange(M*(indN+1)-1, M*indN-1, -1)) 
+        elif direction == "horizontal":
+            for indN in range(N):
+                cols.append(np.arange(M*(N-indN-1), M*(N-indN), 1))            
+        else:
+            print()
+            print("WARNING: Only 'horizontal' and 'vertical' flipping have been implemented so far.")
+            print()
+
+        cols = np.reshape(np.array(cols), -1)
+        ones = [1.0 for val in range(M*N)]
+                
+        mirrorMat = sparse.coo_matrix((ones, (rows, cols)), shape=(M*N, M*N))
+
+        return mirrorMat
+        
     def compute_general_shift_matrix(self, shifts, domain_size, spacings, Ngrid):
         """
 
