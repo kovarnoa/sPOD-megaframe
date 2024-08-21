@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from warnings import warn
 from sPOD_tools import Frame, SVT, trunc_svd, trunc_SVT, shrink
 from total_variation import solve_TVL1, solve_ROF
+from transforms import Transform
 
 # ============================================================================ #
 
@@ -80,7 +81,7 @@ class ReturnValue:
 # ============================================================================ #
 #                                sPOD ALGORITHMS                               #
 # ============================================================================ #
-def shifted_POD(snapshot_matrix, transforms, myparams, method, param_alm=None, nmodes=None, qt_frames=None):
+def shifted_POD(snapshot_matrix, transforms, myparams, method, param_alm=None, nmodes=None, qt_frames=None, nmodesstat=0):
     """
     This function aggregates all the different shifted_POD_Algo() methods to
     provide a unique interface.
@@ -130,7 +131,7 @@ def shifted_POD(snapshot_matrix, transforms, myparams, method, param_alm=None, n
         return shifted_POD_J2(snapshot_matrix, transforms, nmodes, myparams)
     
     elif method == "J2_megaframe":
-        return shifted_POD_J2_megaframe(snapshot_matrix, transforms, myparams, nmodes, nmodesstat=0)
+        return shifted_POD_J2_megaframe(snapshot_matrix, transforms, myparams, nmodes, nmodesstat=nmodesstat)
     
     elif method == "BFB_megaframe":
         return shifted_POD_FB_megaframe(snapshot_matrix, transforms, myparams, nmodes_max=nmodes, method="BFB")
@@ -139,7 +140,7 @@ def shifted_POD(snapshot_matrix, transforms, myparams, method, param_alm=None, n
         return shifted_POD_FB_megaframe(snapshot_matrix, transforms, myparams, nmodes_max=nmodes, method="JFB")
         
     elif method == "ALM_megaframe":
-        return shifted_POD_ALM_megaframe(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=param_alm)
+        return shifted_POD_ALM_megaframe(snapshot_matrix, transforms, myparams, nmodes_max=nmode, mu=param_alm)
 
 def shifted_POD_J2(
     snapshot_matrix,
@@ -685,12 +686,15 @@ def shifted_POD_J2_megaframe(
         qmeg = np.dot((umeg*smeg), vtmeg)
 
         # update stationary frame
-        qstat += res*step
-        [ustat, sstat, vtstat] = trunc_svd(qstat, nmodes_max = nmodesstat, use_rSVD=myparams.use_rSVD)
-        qstat = np.dot((ustat*sstat), vtstat)
+        if nmodesstat > 0:
+            qstat += res        #*step
+            [ustat, sstat, vtstat] = trunc_svd(qstat, nmodes_max = nmodesstat, use_rSVD=myparams.use_rSVD)
+            qstat = np.dot((ustat*sstat), vtstat)
         
-        # update qtilde
-        qtilde = qstat
+            # update qtilde
+            qtilde = qstat*step
+        else:
+            qtilde[...] = 0
         qhat = []
         for k, trafo in enumerate(transforms):
             qkhat = trafo.apply(qmeg[:, k*nCols:(k+1)*nCols])
@@ -730,8 +734,18 @@ def shifted_POD_J2_megaframe(
          
     print("CPU time in total: ", sum_elapsed)
      
-            
-    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
+    if nmodesstat == 0:        
+        return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
+    else:
+        # reformate qstat as frame
+        transfostat = Transform([nRows, 1, 1, nCols], [1], transfo_type="identity")     # transform is identity
+        qstat_frame = Frame(transfostat, field=qstat, Nmodes=nmodesstat)
+        qstat_frame.modal_system["U"] = ustat
+        qstat_frame.modal_system["sigma"] = sstat
+        qstat_frame.modal_system["VT"] = vtstat
+        
+        return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist), qstat_frame
+        
     #return qtilde, [umeg, smeg, vtmeg], [qstat, sstat, vtstat]
     
 def shifted_POD_FB_megaframe(
