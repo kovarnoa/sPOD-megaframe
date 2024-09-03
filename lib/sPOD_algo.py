@@ -349,6 +349,7 @@ def shifted_POD_FB(
     objective_list = [objective_0]
     rel_decrease = 1
     rel_decrease_list = [1]
+    rel_err = 1.0
     rel_err_list = [1.0]
     ranks_hist = [[] for r in range(nTransports)]
     sum_elapsed = 0
@@ -840,6 +841,7 @@ def shifted_POD_FB_megaframe(
     objective_0 = 0.5 * norm(q, ord="fro") ** 2
     objective_list = [objective_0]
 
+    rel_err = 1.0
     rel_err_list = [1.0]
     rel_decrease = 1
     rel_decrease_list = [1]
