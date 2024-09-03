@@ -37,10 +37,11 @@ class ReturnValue:
         self,
         frames,
         approximation,
-        relaltive_error_hist=None,
+        relative_error_hist=None,
         ranks=None,
         ranks_hist=None,
         error_matrix=None,
+        stat_frame = None
     ):
         """
         Constructor.
@@ -65,14 +66,16 @@ class ReturnValue:
         """
         self.frames = frames  # List of all frames
         self.data_approx = approximation  # Approximation of the snapshot data
-        if relaltive_error_hist is not None:
-            self.rel_err_hist = relaltive_error_hist
+        if relative_error_hist is not None:
+            self.rel_err_hist = relative_error_hist
         if error_matrix is not None:
             self.error_matrix = error_matrix
         if ranks is not None:
             self.ranks = ranks
         if ranks_hist is not None:
             self.ranks_hist = ranks_hist
+        if stat_frame is not None:
+            self.stat_frame = stat_frame
 
 
 # ============================================================================ #
@@ -140,7 +143,7 @@ def shifted_POD(snapshot_matrix, transforms, myparams, method, param_alm=None, n
         return shifted_POD_FB_megaframe(snapshot_matrix, transforms, myparams, nmodes_max=nmodes, method="JFB")
         
     elif method == "ALM_megaframe":
-        return shifted_POD_ALM_megaframe(snapshot_matrix, transforms, myparams, nmodes_max=nmode, mu=param_alm)
+        return shifted_POD_ALM_megaframe(snapshot_matrix, transforms, myparams, nmodes_max=nmodes, mu=param_alm)
 
 def shifted_POD_J2(
     snapshot_matrix,
@@ -323,7 +326,7 @@ def shifted_POD_FB(
     if np.size(nmodes_max) != nTransports:
         nmodes = list([nmodes_max]) * nTransports
     else:
-        nmodes = [nmodes_max]
+        nmodes = nmodes_max
     qtilde_frames = [
         Frame(transfo, qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)
     ]
@@ -349,8 +352,8 @@ def shifted_POD_FB(
     rel_err_list = [1.0]
     ranks_hist = [[] for r in range(nTransports)]
     sum_elapsed = 0
-       
-    while rel_decrease > myparams.eps and current_it < myparams.maxit:
+           
+    while rel_err > myparams.eps and current_it < myparams.maxit:
         current_it += 1
         ###################################
         #      2. Calculate residual      #
@@ -410,6 +413,7 @@ def shifted_POD_FB(
         rel_decrease = np.abs((objective_list[-1] - objective_list[-2])) / np.abs(
             objective_list[-1]
         )
+
         rel_decrease_list.append(rel_decrease)
         
         norm_res = norm(reshape(res, -1))
@@ -418,6 +422,7 @@ def shifted_POD_FB(
         
         elapsed = time.perf_counter() - t
         sum_elapsed += elapsed
+        print(rel_decrease)
         if myparams.isVerbose:
             print(
                 "Iter {:4d} / {:d} | Rel_err= {:4.4e} | t_cpu = {:2.2f}s | "
@@ -428,9 +433,11 @@ def shifted_POD_FB(
             break
 
     if myparams.isError:
-        print("CPU time in total: ", sum_elapsed)
+        if myparams.isVerbose:
+            print("CPU time in total: ", sum_elapsed)
         return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
-    print("CPU time in total: ", sum_elapsed)
+    if myparams.isVerbose:
+        print("CPU time in total: ", sum_elapsed)
     return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
 
 
@@ -488,15 +495,16 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
     if np.size(nmodes_max) != nTransports:
         nmodes = list([nmodes_max]) * nTransports
     else:
-        nmodes = [nmodes_max]
+        nmodes = nmodes_max
      
     if qt_frames is None:
             qtilde_frames = [Frame(transfo, field=qtilde, Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)]
     else:
             qtilde_frames = [Frame(transfo, field=qt_frames[k], Nmodes=nmodes[k]) for k, transfo in enumerate(transforms)]
-    print('lambda_s = %f'%myparams.lambda_s)
-    print('lambda_e = %f'%myparams.lambda_E)
-    print('mu = %f'%mu)
+    if myparams.isVerbose:
+        print('lambda_s = %f'%myparams.lambda_s)
+        print('lambda_e = %f'%myparams.lambda_E)
+        print('mu = %f'%mu)
 
     q = snapshot_matrix.copy()
     Y = np.zeros_like(snapshot_matrix)
@@ -601,10 +609,12 @@ def shifted_POD_ALM(snapshot_matrix, transforms, myparams, nmodes_max=None, mu=N
         frame_p.Nmodes = np.sum(S > 0)
 
     if myparams.isError:
-        print("CPU time in total: ", sum_elapsed)
+        if myparams.isVerbose:
+            print("CPU time in total: ", sum_elapsed)
         return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
 
-    print("CPU time in total: ", sum_elapsed)
+    if myparams.isVerbose:
+        print("CPU time in total: ", sum_elapsed)
     return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
     
 ### =================================================== ###
@@ -687,7 +697,7 @@ def shifted_POD_J2_megaframe(
 
         # update stationary frame
         if nmodesstat > 0:
-            qstat += res        #*step
+            qstat += res        
             [ustat, sstat, vtstat] = trunc_svd(qstat, nmodes_max = nmodesstat, use_rSVD=myparams.use_rSVD)
             qstat = np.dot((ustat*sstat), vtstat)
         
@@ -739,12 +749,12 @@ def shifted_POD_J2_megaframe(
     else:
         # reformate qstat as frame
         transfostat = Transform([nRows, 1, 1, nCols], [1], transfo_type="identity")     # transform is identity
-        qstat_frame = Frame(transfostat, field=qstat, Nmodes=nmodesstat)
-        qstat_frame.modal_system["U"] = ustat
-        qstat_frame.modal_system["sigma"] = sstat
-        qstat_frame.modal_system["VT"] = vtstat
+        stat_frame = Frame(transfostat, field=qstat, Nmodes=nmodesstat)
+        stat_frame.modal_system["U"] = ustat
+        stat_frame.modal_system["sigma"] = sstat
+        stat_frame.modal_system["VT"] = vtstat
         
-        return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist), qstat_frame
+        return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, stat_frame=stat_frame)
         
     #return qtilde, [umeg, smeg, vtmeg], [qstat, sstat, vtstat]
     
@@ -753,7 +763,8 @@ def shifted_POD_FB_megaframe(
     transforms,
     myparams,
     nmodes_max=None,
-    method = "JFB"
+    method = "JFB",
+    nmodesstat = 0
 ):
     """
     This function implements the Forward-Backward method (FB).
@@ -802,6 +813,8 @@ def shifted_POD_FB_megaframe(
     
     nRows, nCols = np.shape(q)
     qmeg = np.zeros((nRows, nCols*nTransports))
+    if myparams.stat_frame:
+        qstat = np.zeros_like(q)
     if myparams.isError:
         E = np.zeros_like(snapshot_matrix)
     # make a list of the number of maximal ranks in each frame
@@ -833,7 +846,7 @@ def shifted_POD_FB_megaframe(
     ranks_hist = []
     sum_elapsed = 0
     res = q
-    while rel_decrease > myparams.eps and it < myparams.maxit:
+    while rel_err > myparams.eps and it < myparams.maxit:
         it += 1
         ###################################
         #      2. Gradient step           #
@@ -849,16 +862,25 @@ def shifted_POD_FB_megaframe(
         ###################################
         [umeg, smeg, vtmeg] = trunc_SVT(qmeg, myparams.lambda_s, nmodes_max, myparams.use_rSVD)
         
+        if myparams.stat_frame:
+            qstat += res
+            [ustat, sstat, vtstat] = trunc_SVT(qstat, myparams.lambda_stat, nmodes_max, myparams.use_rSVD)
+            rank_stat = np.sum(sstat > 0)
+
+        
         # (total variation smoothing)
         if myparams.total_variation_iterations > 0:
             for k in range(nTransports):
                 VT = vtmeg[:, k*nCols:(k+1)*nCols]
                 VT = solve_TVL1(VT.T, clambda=myparams.tv_lambda, iter_n=myparams.total_variation_iterations).T
                 vtmeg[:, k*nCols:(k+1)*nCols] = VT
+            if myparams.stat_frame:
+                vtstat = solve_TVL1(vtstat.T, clambda=myparams.tv_lambda, iter_n=myparams.total_variation_iterations).T
                 
         rank_meg = np.sum(smeg > 0)
         qmeg = np.dot(umeg*smeg, vtmeg)      # truncate
         ranks_hist.append(rank_meg)
+                 
 
         ###################################
         #      4. Error matrix            #
@@ -870,6 +892,11 @@ def shifted_POD_FB_megaframe(
         #      5. Update qtilde           #
         ###################################
         qtilde = np.zeros_like(q)
+        
+        if myparams.stat_frame:
+            qstat = np.dot((ustat*sstat), vtstat)
+            qtilde = qstat/nTransports
+        
         qhat = []
         for k, trafo in enumerate(transforms):
             qkhat = trafo.apply(qmeg[:, k*nCols:(k+1)*nCols])
@@ -905,11 +932,18 @@ def shifted_POD_FB_megaframe(
         elapsed = time.perf_counter() - t
         sum_elapsed += elapsed
         if myparams.isVerbose:
-            print(
+            if myparams.stat_frame:
+                print(
                 "Iter {:4d} / {:d} | Rel_err= {:4.4e} | t_cpu = {:2.2f}s | "
-                "rank_meg = ".format(it, myparams.maxit, rel_err, elapsed),
-                rank_meg
+                "rank_meg = {:d} | rank_stat = {:d}".format(it, myparams.maxit, rel_err, elapsed, rank_meg, rank_stat),
+                #rank_meg
             )
+            else:    
+                print(
+                    "Iter {:4d} / {:d} | Rel_err= {:4.4e} | t_cpu = {:2.2f}s | "
+                    "rank_meg = ".format(it, myparams.maxit, rel_err, elapsed),
+                    rank_meg
+                )
         
         if it > 5 and np.abs(rel_err_list[-1] - rel_err_list[-4]) \
            < myparams.gtol * abs(rel_err_list[-1]):
@@ -927,8 +961,18 @@ def shifted_POD_FB_megaframe(
     if myparams.isError:
         print("CPU time in total: ", sum_elapsed)
         return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
+    elif myparams.stat_frame == False:
+        print("CPU time in total: ", sum_elapsed)
+        return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
+        
+    transfostat = Transform([nRows, 1, 1, nCols], [1], transfo_type="identity")     # transform is identity
+    stat_frame = Frame(transfostat, field=qstat, Nmodes=rank_stat)
+    stat_frame.modal_system["U"] = ustat
+    stat_frame.modal_system["sigma"] = sstat
+    stat_frame.modal_system["VT"] = vtstat
     print("CPU time in total: ", sum_elapsed)
-    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, stat_frame=stat_frame)
+
 
 
 def shifted_POD_ALM_megaframe(
@@ -993,6 +1037,8 @@ def shifted_POD_ALM_megaframe(
     q = snapshot_matrix.copy()
     Y = np.zeros_like(snapshot_matrix)
     E = np.zeros_like(snapshot_matrix)
+    if myparams.stat_frame:
+        qstat = np.zeros_like(snapshot_matrix)
     norm_q = norm(reshape(q, -1))
     it = 0
     nRows, nCols = np.shape(q)
@@ -1031,10 +1077,14 @@ def shifted_POD_ALM_megaframe(
 
         #qstat = np.zeros_like(q)            # stationary frame
 
-
         for k, trafo_k in enumerate(transforms):
             rk = trafo_k.reverse(res)
             qmeg[:, k*nCols : (k+1)*nCols] += rk / nTransports
+        
+        if myparams.stat_frame:
+            qstat += res / nTransports
+            [ustat, sstat, vtstat] = trunc_SVT(qstat, mu_inv * myparams.lambda_stat, nmodes, myparams.use_rSVD)
+            rank_stat = np.sum(sstat>0)
             
         # proximal step (6):
         [umeg, smeg, vtmeg] = trunc_SVT(qmeg, mu_inv * myparams.lambda_s, nmodes, myparams.use_rSVD)
@@ -1046,6 +1096,8 @@ def shifted_POD_ALM_megaframe(
                 VT = vtmeg[:, k*nCols:(k+1)*nCols]
                 VT = solve_TVL1(VT.T, clambda=myparams.tv_lambda, iter_n=myparams.total_variation_iterations).T
                 vtmeg[:, k*nCols:(k+1)*nCols] = VT
+            if ranks_stat > 0:
+                vtstat = solve_TVL1(vtstat.T, clambda=myparams.tv_lambda, iter_n=myparams.total_variation_iterations).T
         
         qmeg = np.dot(umeg*smeg, vtmeg)      # truncate
         ranks_hist.append(rank_meg)
@@ -1057,7 +1109,11 @@ def shifted_POD_ALM_megaframe(
             qkhat = trafo.apply(qmeg[:, k*nCols : (k+1)*nCols])
             qhat.append(qkhat) 
             qtilde += qkhat 
-            
+        
+        if myparams.stat_frame:
+            qstat = np.dot((ustat*sstat), vtstat)
+            qtilde += qstat #/ nTransports
+        
         ###################################
         #      4. Update noise term       #
         ###################################
@@ -1087,16 +1143,15 @@ def shifted_POD_ALM_megaframe(
         sum_elapsed += elapsed
 
         if myparams.isVerbose:
-            print(
+            if myparams.stat_frame:
+                print(
                 "Iter {:4d} / {:d} | Rel_err= {:4.4e} | norm(dres) = {:4.1e} | "
-                "rank_meg = {:d} ".format(
-                    it,
-                    myparams.maxit,
-                    rel_err,
-                    mu * norm_dres / norm_q,
-                    rank_meg
-                ),
-            )
+                "rank_meg = {:d} | rank_stat = {:d}".format(it, 
+                myparams.maxit, rel_err, mu * norm_dres / norm_q, rank_meg, rank_stat),)
+            else:
+                print(
+                    "Iter {:4d} / {:d} | Rel_err= {:4.4e} | norm(dres) = {:4.1e} | "
+                    "rank_meg = {:d} ".format(it, myparams.maxit, rel_err, mu * norm_dres / norm_q, rank_meg),)
 
         if it > 5 and np.abs(rel_err_list[-1] - rel_err_list[-4]) < myparams.gtol * abs(
             rel_err_list[-1]
@@ -1115,9 +1170,17 @@ def shifted_POD_ALM_megaframe(
         print("CPU time in total: ", sum_elapsed)
         return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, E)
         
+    elif myparams.stat_frame == False:
+        print("CPU time in total: ", sum_elapsed)
+        return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
+        
+    transfostat = Transform([nRows, 1, 1, nCols], [1], transfo_type="identity")     # transform is identity
+    stat_frame = Frame(transfostat, field=qstat, Nmodes=rank_stat)
+    stat_frame.modal_system["U"] = ustat
+    stat_frame.modal_system["sigma"] = sstat
+    stat_frame.modal_system["VT"] = vtstat
     print("CPU time in total: ", sum_elapsed)
-    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist)
-    #return ReturnValue(qtilde, rel_err_list, ranks, ranks_hist_meg), modal_syst_meg
+    return ReturnValue(qtilde_frames, qtilde, rel_err_list, ranks, ranks_hist, stat_frame=stat_frame)
 
 
 def force_constraint(qframes, transforms, q, Niter=1, alphas=None):
@@ -1248,6 +1311,9 @@ class sPOD_Param:
                                            algorithm that computes the proximal
                                            operator of the total variation (TV).
         tv_lambda (float):  Parameter clambda for the total variation
+        stat_frame (bool): Should megaframe use stationary frame?
+        lambda_stat (float): Regularization parameter for the nuclear norm of the
+                             stationary frame
     """
 
     gtol: float = 1e-6
@@ -1260,6 +1326,9 @@ class sPOD_Param:
     lambda_E: float = 1e-2
     total_variation_iterations: int = -1
     tv_lambda: float = 1.0
+    
+    stat_frame: bool = False
+    lambda_stat: float = 1e-2
 
 
 # ============================================================================ #
