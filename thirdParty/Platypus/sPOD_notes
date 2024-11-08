@@ -1,0 +1,26 @@
+Poznamky k platypu
+
+### ================================================================ ###
+
+problem attributes:
+-- 'constraints'    ........... constraints
+                                none
+-- 'directions'     ........... list of -1 or 1 for each objective function
+                                [-1, -1]/[-1, -1]
+-- 'function'       ........... 
+-- 'nconstrs'       ........... number of constraints
+                                here zero
+-- 'nobjs'          ........... number of objectives
+                                2(/3) -- minimal rec. error, minimal rank, (minimal error matrix)
+-- 'nvars'          ........... number of decision variables (optimizable)
+                                1/2/3 -- lambda_s, mu, lambda_E (or all lambdas separately?)
+-- 'types'          ........... list of types, as defined in platypus/types.py
+                                for sPOD probably Real(min_value, max_value)
+                                Real(0, 1e6) ???
+
+### ================================================================ ###
+
+class XXX(Problem):
+    def _init__
+    def evaluate
+    def random ---- toto se asi nepoužívá ?!

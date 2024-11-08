@@ -1,0 +1,15 @@
+
+[doc]
+sphinx
+
+[full]
+mpi4py
+matplotlib
+Platypus-Opt[test]
+Platypus-Opt[doc]
+
+[test]
+pytest
+mock
+flake8
+numpy
