@@ -410,9 +410,9 @@ def shifted_POD_FB(
             E = shrink(E + stepsize * res, stepsize * myparams.lambda_E)
             objective = (
                 0.5 * norm(res, ord="fro") ** 2
-                + myparams.lambda_s
-                * sum(norm(qk.build_field(), ord="nuc") for qk in qtilde_frames)
-                + myparams.lambda_E * norm(E, ord=1)
+                + myparams.lambda_s * sum(norm(qk.build_field(), ord="nuc")
+                                          for qk in qtilde_frames)
+                + myparams.lambda_E * norm(E.flatten(), ord=1)
             )
         else:
             objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lambda_s * sum(
@@ -935,7 +935,7 @@ def shifted_POD_FB_megaframe(
         if myparams.isError:
             objective = (0.5*norm(res, ord='fro')**2
                 + myparams.lambda_s * norm(qmeg, ord='nuc') 
-                + myparams.lambda_E * norm(E, ord=1))
+                + myparams.lambda_E * norm(E.flatten(), ord=1))
         else:
             objective = (0.5*norm(res, ord='fro')**2
                 + myparams.lambda_s * norm(qmeg, ord='nuc'))            
@@ -1363,14 +1363,18 @@ def shifted_POD_BFBTV(
             E = shrink(E + stepsize * res, stepsize * myparams.lambda_E)
             objective = (
                 0.5 * norm(res, ord="fro") ** 2
-                + myparams.lambda_s
-                * sum(norm(qk.build_field(), ord="nuc") for qk in qtilde_frames)
-                + myparams.lambda_E * norm(E, ord=1)
+                + myparams.lambda_s * sum(norm(qk.build_field(), ord="nuc")
+                                          for qk in qtilde_frames)
+                + myparams.mu * sum(norm((qk.build_field()@D).flatten(), ord=1)
+                                    for qk in qtilde_frames)
+                + myparams.lambda_E * norm(E.flatten(), ord=1)
             )
         else:
-            objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lambda_s * sum(
-                norm(qk.build_field(), ord="nuc") for qk in qtilde_frames
-            )
+            objective = 0.5 * norm(res, ord="fro") ** 2
+            + myparams.lambda_s * sum(norm(qk.build_field(), ord="nuc")
+                                      for qk in qtilde_frames)
+            + myparams.mu * sum(norm((qk.build_field()@D).flatten(), ord=1)
+                                for qk in qtilde_frames)
         norm_res = norm(reshape(res, -1))
         rel_err = norm_res / norm_q
         rel_err_list.append(rel_err)
@@ -1587,14 +1591,18 @@ def shifted_POD_BFBTV_v2(
             E = shrink(E + stepsize * res, stepsize * myparams.lambda_E)
             objective = (
                 0.5 * norm(res, ord="fro") ** 2
-                + myparams.lambda_s
-                * sum(norm(qk.build_field(), ord="nuc") for qk in qtilde_frames)
-                + myparams.lambda_E * norm(E, ord=1)
+                + myparams.lambda_s * sum(norm(qk.build_field(), ord="nuc")
+                                          for qk in qtilde_frames)
+                + myparams.mu * sum(norm((D@qk.modal_system["VT"].T).flatten(),
+                                         ord=1) for qk in qtilde_frames)
+                + myparams.lambda_E * norm(E.flatten(), ord=1)
             )
         else:
-            objective = 0.5 * norm(res, ord="fro") ** 2 + myparams.lambda_s * sum(
-                norm(qk.build_field(), ord="nuc") for qk in qtilde_frames
-            )
+            objective = 0.5 * norm(res, ord="fro") ** 2
+            + myparams.lambda_s * sum(
+                norm(qk.build_field(), ord="nuc") for qk in qtilde_frames)
+            + myparams.mu * sum(norm((D@qk.modal_system["VT"].T).flatten(),
+                                     ord=1) for qk in qtilde_frames
         objective_list.append(objective)
         rel_decrease = np.abs((objective_list[-1] - objective_list[-2])) / np.abs(
             objective_list[-1]
