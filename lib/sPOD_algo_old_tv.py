@@ -1604,7 +1604,7 @@ def shifted_POD_BFBTV_v2(
             + myparams.lambda_s * sum(
                 norm(qk.build_field(), ord="nuc") for qk in qtilde_frames)
             + myparams.tv_mu * sum(norm((D@qk.modal_system["VT"].T).flatten(),
-                                     ord=1) for qk in qtilde_frames
+                                     ord=1) for qk in qtilde_frames)
         objective_list.append(objective)
         rel_decrease = np.abs((objective_list[-1] - objective_list[-2])) / np.abs(
             objective_list[-1]
